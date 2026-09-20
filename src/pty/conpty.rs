@@ -1,6 +1,6 @@
 use crate::pty::shell::ShellType;
-use anyhow::Result;
-use portable_pty::{native_pty_system, CommandBuilder, PtyPair, PtySize};
+use anyhow::{Context, Result};
+use portable_pty::{native_pty_system, CommandBuilder, ExitStatus, PtyPair, PtySize};
 use std::path::Path;
 
 pub struct ConPtySession {
@@ -29,9 +29,15 @@ impl ConPtySession {
         cmd.env("TERM", "xterm-256color");
         cmd.arg("-noexit");
         cmd.arg("-command");
-        cmd.arg(format!("try {{ . \"{}\" }} catch {{}}", script_path.display()));
 
-        let child = pair.slave.spawn_command(cmd)?;
+        // Literal PowerShell single quotes escape ($ and ` are preserved without evaluation)
+        let escaped_path = script_path.to_string_lossy().replace('\'', "''");
+        cmd.arg(format!("try {{ . '{}' }} catch {{}}", escaped_path));
+
+        let child = pair
+            .slave
+            .spawn_command(cmd)
+            .with_context(|| format!("Falha ao iniciar processo da shell {}", shell_type.executable_name()))?;
 
         Ok(Self { pair, child })
     }
@@ -45,5 +51,17 @@ impl ConPtySession {
             pixel_height: 0,
         })?;
         Ok(())
+    }
+
+    /// Terminates the child process.
+    pub fn kill(&mut self) -> Result<()> {
+        self.child.kill()?;
+        Ok(())
+    }
+
+    /// Checks the child process exit status without blocking.
+    pub fn try_wait(&mut self) -> Result<Option<ExitStatus>> {
+        let status = self.child.try_wait()?;
+        Ok(status)
     }
 }

@@ -19,7 +19,7 @@ impl ShellType {
 /// Detects the PowerShell shell type to use.
 ///
 /// If `override_shell` is provided:
-/// - Returns `ShellType::Powershell` if "powershell" (case-insensitive).
+/// - Returns `ShellType::Powershell` if "powershell" or "powershell.exe" (case-insensitive).
 /// - Otherwise returns `ShellType::Pwsh`.
 ///
 /// If `override_shell` is None:
@@ -27,7 +27,7 @@ impl ShellType {
 /// - Otherwise returns `ShellType::Powershell`.
 pub fn detect_shell(override_shell: Option<&str>) -> ShellType {
     if let Some(s) = override_shell {
-        if s.eq_ignore_ascii_case("powershell") {
+        if s.eq_ignore_ascii_case("powershell") || s.eq_ignore_ascii_case("powershell.exe") {
             ShellType::Powershell
         } else {
             ShellType::Pwsh
