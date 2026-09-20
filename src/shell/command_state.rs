@@ -11,10 +11,6 @@ pub struct CommandState {
 }
 
 impl CommandState {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     pub fn handle_osc(&mut self, event: OscEvent, current_cursor_y: u16, current_cursor_x: u16) {
         match event {
             OscEvent::PromptStarted => {
@@ -26,6 +22,7 @@ impl CommandState {
             }
             OscEvent::PromptEnded => {
                 self.in_prompt = false;
+                self.prompt_line = Some(current_cursor_y);
                 self.prompt_end_x = Some(current_cursor_x);
             }
             OscEvent::Cwd(cwd) => {
