@@ -305,7 +305,7 @@ git commit -m "feat(shell): implement OSC 6973 parser and command state tracker"
 - Modify: `src/vt/mod.rs`
 - Test: `tests/vt_test.rs`
 
-- [ ] **Step 1: Write failing test for headless terminal and CPR query detection**
+- [x] **Step 1: Write failing test for headless terminal and CPR query detection**
 
 ```rust
 // tests/vt_test.rs
@@ -326,12 +326,12 @@ fn test_cpr_query() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --test vt_test`
 Expected: FAIL with module not found.
 
-- [ ] **Step 3: Implement `emulator.rs` and `cpr.rs`**
+- [x] **Step 3: Implement `emulator.rs` and `cpr.rs`**
 
 ```rust
 // src/vt/cpr.rs
@@ -418,12 +418,12 @@ pub mod cpr;
 pub mod emulator;
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cargo test --test vt_test`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/vt/ tests/vt_test.rs
@@ -441,7 +441,7 @@ git commit -m "feat(vt): implement headless VT100 emulator and CPR query filteri
 - Modify: `src/io/mod.rs`
 - Test: `tests/io_test.rs`
 
-- [ ] **Step 1: Write failing test for key classification**
+- [x] **Step 1: Write failing test for key classification**
 
 ```rust
 // tests/io_test.rs
@@ -464,12 +464,12 @@ fn test_classify_keys() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --test io_test`
 Expected: FAIL with module not found.
 
-- [ ] **Step 3: Implement `raw_mode.rs`, `key_event.rs` and `filter.rs`**
+- [x] **Step 3: Implement `raw_mode.rs`, `key_event.rs` and `filter.rs`**
 
 ```rust
 // src/io/raw_mode.rs
@@ -549,12 +549,12 @@ pub mod key_event;
 pub mod raw_mode;
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cargo test --test io_test`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/io/ tests/io_test.rs
