@@ -1,13 +1,6 @@
 use clap::Parser;
+use shell_panel::core;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-
-mod core;
-mod engine;
-mod io;
-mod pty;
-mod shell;
-mod vt;
-mod ui;
 
 #[derive(Parser, Debug)]
 #[command(name = "shell-panel")]
