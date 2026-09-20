@@ -16,6 +16,9 @@ impl RawModeGuard {
 impl Drop for RawModeGuard {
     fn drop(&mut self) {
         if self.active {
+            let mut out = std::io::stdout().lock();
+            let _ = std::io::Write::write_all(&mut out, b"\x1b[?25h");
+            let _ = std::io::Write::flush(&mut out);
             let _ = disable_raw_mode();
         }
     }

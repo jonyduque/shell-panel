@@ -48,9 +48,21 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .init();
 
+    // Register panic hook to restore normal terminal mode and show cursor
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::cursor::Show);
+        default_hook(info);
+    }));
+
     let config = core::config::Config::default();
     let mut app = core::app::App::new(config, cli.shell);
-    app.run().await?;
+    let exit_code = app.run().await?;
+
+    if exit_code != 0 {
+        std::process::exit(exit_code as i32);
+    }
 
     Ok(())
 }

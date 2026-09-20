@@ -8,7 +8,7 @@ use futures_util::StreamExt;
 
 use crate::core::config::Config;
 use crate::engine::lexer::lex_command_line;
-use crate::engine::provider::CompletionProvider;
+use crate::engine::provider::{CompletionProvider, Suggestion};
 use crate::engine::providers::carapace::CarapaceProvider;
 use crate::engine::providers::files::FileProvider;
 use crate::engine::providers::json_spec::{FigOption, FigSpec, FigSubcommand, JsonSpecProvider};
@@ -498,20 +498,23 @@ pub fn default_docker_spec() -> FigSpec {
 
 /// Helper function to scan OSC sequences from PTY output chunks,
 /// process VT bytes incrementally up to OSC boundaries to track exact cursor position,
-/// and handle command state transitions.
+/// handle command state transitions, and return clean terminal bytes with OSC 6973 stripped.
 fn scan_and_handle_osc(
     data: &[u8],
     term: &mut HeadlessTerminal,
     command_state: &mut CommandState,
     residual: &mut Vec<u8>,
-) {
+) -> Vec<u8> {
+    let mut clean_output = Vec::with_capacity(data.len());
     let mut i = 0;
     let mut last = 0;
 
     while i < data.len() {
         if data[i..].starts_with(b"\x1b]6973;") {
             if i > last {
-                term.process(&data[last..i]);
+                let slice = &data[last..i];
+                term.process(slice);
+                clean_output.extend_from_slice(slice);
             }
             let payload_start = i + 2; // skip '\x1b]'
             let mut j = i + 7; // after '\x1b]6973;'
@@ -542,7 +545,7 @@ fn scan_and_handle_osc(
             } else {
                 // Unterminated OSC sequence at chunk boundary: buffer for next chunk
                 residual.extend_from_slice(&data[i..]);
-                return;
+                return clean_output;
             }
         } else {
             i += 1;
@@ -562,13 +565,18 @@ fn scan_and_handle_osc(
         if prefix_matched > 0 {
             let safe_len = tail.len() - prefix_matched;
             if safe_len > 0 {
-                term.process(&tail[..safe_len]);
+                let slice = &tail[..safe_len];
+                term.process(slice);
+                clean_output.extend_from_slice(slice);
             }
             residual.extend_from_slice(&tail[safe_len..]);
         } else {
             term.process(tail);
+            clean_output.extend_from_slice(tail);
         }
     }
+
+    clean_output
 }
 
 pub struct App {
@@ -584,7 +592,7 @@ impl App {
         }
     }
 
-    pub async fn run(&mut self) -> Result<()> {
+    pub async fn run(&mut self) -> Result<u32> {
         let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
         let shell_type = detect_shell(self.override_shell.as_deref());
         let script_path = get_shell_integration_path()?;
@@ -650,24 +658,37 @@ impl App {
                     } else {
                         let tokens = lex_command_line(&text);
                         let root_cmd = tokens.first().map(|t| t.text.as_str()).unwrap_or("");
-                        let mut results = Vec::new();
+                        let json_fut = async {
+                            if json_spec_provider.can_handle(root_cmd) {
+                                json_spec_provider.complete(&text, &command_state.cwd).await
+                            } else {
+                                Vec::<Suggestion>::new()
+                            }
+                        };
+                        let zoxide_fut = async {
+                            if zoxide_provider.can_handle(root_cmd) {
+                                zoxide_provider.complete(&text, &command_state.cwd).await
+                            } else {
+                                Vec::<Suggestion>::new()
+                            }
+                        };
+                        let file_fut = async {
+                            if file_provider.can_handle(root_cmd) {
+                                file_provider.complete(&text, &command_state.cwd).await
+                            } else {
+                                Vec::<Suggestion>::new()
+                            }
+                        };
 
-                        if json_spec_provider.can_handle(root_cmd) {
-                            let mut sugs = json_spec_provider.complete(&text, &command_state.cwd).await;
-                            results.append(&mut sugs);
-                        }
-                        if zoxide_provider.can_handle(root_cmd) {
-                            let mut sugs = zoxide_provider.complete(&text, &command_state.cwd).await;
-                            results.append(&mut sugs);
-                        }
+                        let (mut json_sugs, mut zoxide_sugs, mut file_sugs) = tokio::join!(json_fut, zoxide_fut, file_fut);
+                        let mut results = Vec::with_capacity(json_sugs.len() + zoxide_sugs.len() + file_sugs.len());
+                        results.append(&mut json_sugs);
+                        results.append(&mut zoxide_sugs);
                         if results.is_empty() && carapace_provider.can_handle(root_cmd) {
-                            let mut sugs = carapace_provider.complete(&text, &command_state.cwd).await;
-                            results.append(&mut sugs);
+                            let mut carapace_sugs = carapace_provider.complete(&text, &command_state.cwd).await;
+                            results.append(&mut carapace_sugs);
                         }
-                        if file_provider.can_handle(root_cmd) {
-                            let mut sugs = file_provider.complete(&text, &command_state.cwd).await;
-                            results.append(&mut sugs);
-                        }
+                        results.append(&mut file_sugs);
 
                         results.sort_by(|a, b| b.priority.cmp(&a.priority).then_with(|| a.name.cmp(&b.name)));
                         let mut seen = HashSet::new();
@@ -699,17 +720,19 @@ impl App {
                     // 1. Strip Win32 / Kitty sequences
                     let sanitized = sanitize_output_stream(&data_to_process);
 
-                    // 2. If dropdown was visible and terminal output arrived, clear dropdown to avoid visual tearing
+                    // 2. Scan OSC sequences, update terminal and command state, and get clean terminal bytes (OSC 6973 stripped)
+                    let clean = scan_and_handle_osc(&sanitized, &mut term, &mut command_state, &mut osc_residual);
+
+                    // 3. If dropdown was visible and terminal output arrived, clear dropdown to avoid visual tearing
                     if let Some(layout) = dropdown_layout.take() {
                         let _ = Renderer::clear_dropdown(&layout, &term, &mut stdout);
                     }
 
-                    // 3. Print sanitized bytes to stdout and flush
-                    let _ = stdout.write_all(&sanitized);
-                    let _ = stdout.flush();
-
-                    // 4. Scan OSC sequences and process bytes through VT emulator
-                    scan_and_handle_osc(&sanitized, &mut term, &mut command_state, &mut osc_residual);
+                    // 4. Print clean bytes to stdout (no internal OSC sequences leak to host) and flush
+                    if !clean.is_empty() {
+                        let _ = stdout.write_all(&clean);
+                        let _ = stdout.flush();
+                    }
 
                     // 5. If NOT in alternate buffer and prompt ended (!command_state.in_prompt):
                     if !term.is_alternate_buffer() && !command_state.in_prompt {
@@ -862,10 +885,8 @@ impl App {
         }
 
         let exit_status = pty_session.child.wait()?;
-        if !exit_status.success() {
-            std::process::exit(exit_status.exit_code() as i32);
-        }
+        drop(_raw_guard);
 
-        Ok(())
+        Ok(exit_status.exit_code())
     }
 }

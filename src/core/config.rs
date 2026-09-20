@@ -10,7 +10,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             max_suggestions: 5,
-            debounce_ms: 10,
+            debounce_ms: 30,
         }
     }
 }
