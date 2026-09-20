@@ -68,9 +68,8 @@ impl HeadlessTerminal {
     /// Extracts typed command text starting from `(prompt_row, prompt_end_x)`
     /// up to the current cursor position `(cursor_col, cursor_row)`.
     ///
-    /// Filters out ghost text (dim or italic suggestions from PSReadLine).
-    /// Preserves spaces where cell contents are empty.
-    /// Trims trailing whitespace.
+    /// Preserves user-typed spaces (including trailing spaces before cursor).
+    /// Stops collecting and filters out PSReadLine ghost text (dim or italic suggestions).
     pub fn extract_command_text(&self, prompt_row: u16, prompt_end_x: u16) -> String {
         let screen = self.parser.screen();
         let (cursor_col, cursor_row) = self.cursor_position();
@@ -94,57 +93,103 @@ impl HeadlessTerminal {
                     }
                     // Filter out PSReadLine inline prediction ghost text (dim or italic)
                     let is_ghost = cell.dim() || cell.italic();
-                    if !is_ghost {
-                        let ch = cell.contents();
-                        if !ch.is_empty() {
-                            result.push_str(&ch);
-                        } else {
-                            result.push(' ');
-                        }
+                    if is_ghost {
+                        // Once ghost text begins, stop accumulating command text
+                        break;
+                    }
+                    let ch = cell.contents();
+                    if !ch.is_empty() {
+                        result.push_str(&ch);
+                    } else {
+                        result.push(' ');
                     }
                 }
             }
         }
 
-        result.trim_end().to_string()
+        result
     }
 }
 
-/// Translates SGR 2 (dim / faint) to SGR 90 (bright black / dark gray) and
-/// SGR 22 (normal intensity) to SGR 39 (default fgcolor), because `vt100` crate
-/// does not natively record SGR 2 in its cell attributes.
-fn preprocess_vt_bytes(bytes: &[u8]) -> Cow<'_, [u8]> {
+/// CSI SGR-aware preprocessor for terminal byte sequences.
+///
+/// Only modifies SGR sequences (`\x1b[...m`), rewriting standalone parameter `2`
+/// (faint/dim) to `90` (bright black) so `vt100` records it in its cell state.
+/// Safely ignores cursor position (`\x1b[2;10H`), RGB (`\x1b[38;2;...m`),
+/// 256-color palette (`\x1b[38;5;2m`), and plain text.
+pub fn preprocess_vt_bytes(bytes: &[u8]) -> Cow<'_, [u8]> {
     if !bytes.contains(&0x1b) {
-        return Cow::Borrowed(bytes);
-    }
-    if !bytes.windows(4).any(|w| w == b"\x1b[2m" || w == b";2m" || w == b"[2;" || w == b";2;")
-        && !bytes.windows(5).any(|w| w == b"\x1b[22m")
-    {
         return Cow::Borrowed(bytes);
     }
 
     let mut out = Vec::with_capacity(bytes.len() + 16);
     let mut i = 0;
+
     while i < bytes.len() {
-        if bytes[i..].starts_with(b"\x1b[2m") {
-            out.extend_from_slice(b"\x1b[90m");
-            i += 4;
-        } else if bytes[i..].starts_with(b"\x1b[22m") {
-            out.extend_from_slice(b"\x1b[39m");
-            i += 5;
-        } else if bytes[i..].starts_with(b";2m") {
-            out.extend_from_slice(b";90m");
-            i += 3;
-        } else if bytes[i..].starts_with(b"[2;") {
-            out.extend_from_slice(b"[90;");
-            i += 3;
-        } else if bytes[i..].starts_with(b";2;") {
-            out.extend_from_slice(b";90;");
-            i += 3;
-        } else {
-            out.push(bytes[i]);
-            i += 1;
+        if bytes[i..].starts_with(b"\x1b[") {
+            // Find the end of the CSI sequence (final byte in 0x40..=0x7E)
+            let start = i;
+            let mut j = i + 2;
+            while j < bytes.len() && (bytes[j] < 0x40 || bytes[j] > 0x7e) {
+                j += 1;
+            }
+
+            if j < bytes.len() {
+                let final_byte = bytes[j];
+                let csi_body = &bytes[i + 2..j];
+
+                if final_byte == b'm' {
+                    // SGR sequence: parse numeric parameters separated by ';'
+                    if let Ok(param_str) = std::str::from_utf8(csi_body) {
+                        let mut params: Vec<&str> = param_str.split(';').collect();
+                        let mut modified = false;
+                        let mut skip_count = 0;
+
+                        for idx in 0..params.len() {
+                            if skip_count > 0 {
+                                skip_count -= 1;
+                                continue;
+                            }
+                            let p = params[idx];
+                            if p == "38" || p == "48" {
+                                if let Some(&next_p) = params.get(idx + 1) {
+                                    if next_p == "2" {
+                                        // 38;2;r;g;b -> skip next 4 parameters (2, r, g, b)
+                                        skip_count = 4;
+                                        continue;
+                                    } else if next_p == "5" {
+                                        // 38;5;idx -> skip next 2 parameters (5, idx)
+                                        skip_count = 2;
+                                        continue;
+                                    }
+                                }
+                            }
+                            if p == "2" {
+                                params[idx] = "90";
+                                modified = true;
+                            }
+                        }
+
+                        if modified {
+                            out.extend_from_slice(b"\x1b[");
+                            out.extend_from_slice(params.join(";").as_bytes());
+                            out.push(b'm');
+                            i = j + 1;
+                            continue;
+                        }
+                    }
+                }
+
+                // Unmodified CSI sequence
+                out.extend_from_slice(&bytes[start..=j]);
+                i = j + 1;
+                continue;
+            }
         }
+
+        out.push(bytes[i]);
+        i += 1;
     }
+
     Cow::Owned(out)
 }
