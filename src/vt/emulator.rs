@@ -82,7 +82,7 @@ impl HeadlessTerminal {
         }
 
         let mut result = String::new();
-        for row in prompt_row..=cursor_row {
+        'rows: for row in prompt_row..=cursor_row {
             let start_col = if row == prompt_row { prompt_end_x } else { 0 };
             let end_col = if row == cursor_row { cursor_col } else { self.cols };
 
@@ -95,7 +95,7 @@ impl HeadlessTerminal {
                     let is_ghost = cell.dim() || cell.italic();
                     if is_ghost {
                         // Once ghost text begins, stop accumulating command text
-                        break;
+                        break 'rows;
                     }
                     let ch = cell.contents();
                     if !ch.is_empty() {
@@ -130,7 +130,7 @@ pub fn preprocess_vt_bytes(bytes: &[u8]) -> Cow<'_, [u8]> {
             // Find the end of the CSI sequence (final byte in 0x40..=0x7E)
             let start = i;
             let mut j = i + 2;
-            while j < bytes.len() && (bytes[j] < 0x40 || bytes[j] > 0x7e) {
+            while j < bytes.len() && (0x20..=0x3f).contains(&bytes[j]) {
                 j += 1;
             }
 
