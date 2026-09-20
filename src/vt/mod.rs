@@ -1,1 +1,5 @@
-// Virtual terminal module for headless screen emulation
+pub mod cpr;
+pub mod emulator;
+
+pub use cpr::has_cpr_query;
+pub use emulator::{CellExt, HeadlessTerminal};
