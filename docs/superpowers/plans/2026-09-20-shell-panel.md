@@ -1052,7 +1052,7 @@ git commit -m "feat(ui): implement suggestion state, pagination and virtual patc
 - Modify: `src/main.rs`
 - Test: `tests/e2e_pty_test.rs`
 
-- [ ] **Step 1: Wire App loop multiplexing Stdio, PTY output and Suggestions**
+- [x] **Step 1: Wire App loop multiplexing Stdio, PTY output and Suggestions**
 
 Integrate:
 1. ConPTY spawn of PowerShell with `assets/shellIntegration.ps1`.
@@ -1064,12 +1064,12 @@ Integrate:
    - When <kbd>Esc</kbd>: dismiss menu.
    - Other keys: forward directly to PTY.
 
-- [ ] **Step 2: Run `cargo check` and `cargo build`**
+- [x] **Step 2: Run `cargo check` and `cargo build`**
 
 Run: `cargo build`
 Expected: PASS without errors.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/core/app.rs src/main.rs
