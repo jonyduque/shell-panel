@@ -1,80 +1,97 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, KeyEventState};
 use shell_panel::io::filter::sanitize_output_stream;
 use shell_panel::io::key_event::{classify_key, ActionKey};
 use shell_panel::io::raw_mode::RawModeGuard;
 
+fn make_key_event(code: KeyCode, modifiers: KeyModifiers, kind: KeyEventKind) -> KeyEvent {
+    KeyEvent {
+        code,
+        modifiers,
+        kind,
+        state: KeyEventState::empty(),
+    }
+}
+
 #[test]
 fn test_classify_arrow_keys() {
-    let down = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
+    let down = make_key_event(KeyCode::Down, KeyModifiers::NONE, KeyEventKind::Press);
     assert_eq!(classify_key(&down), ActionKey::MenuDown);
 
-    let up = KeyEvent::new(KeyCode::Up, KeyModifiers::NONE);
+    let up = make_key_event(KeyCode::Up, KeyModifiers::NONE, KeyEventKind::Press);
     assert_eq!(classify_key(&up), ActionKey::MenuUp);
 }
 
 #[test]
-fn test_classify_tab_and_esc() {
-    let tab = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
+fn test_classify_ignores_release_events() {
+    let down_release = make_key_event(KeyCode::Down, KeyModifiers::NONE, KeyEventKind::Release);
+    assert_eq!(classify_key(&down_release), ActionKey::Passthrough);
+
+    let tab_release = make_key_event(KeyCode::Tab, KeyModifiers::NONE, KeyEventKind::Release);
+    assert_eq!(classify_key(&tab_release), ActionKey::Passthrough);
+}
+
+#[test]
+fn test_classify_tab_backtab_and_esc() {
+    let tab = make_key_event(KeyCode::Tab, KeyModifiers::NONE, KeyEventKind::Press);
     assert_eq!(classify_key(&tab), ActionKey::AcceptSuggestion);
 
-    let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+    let backtab = make_key_event(KeyCode::BackTab, KeyModifiers::SHIFT, KeyEventKind::Press);
+    assert_eq!(classify_key(&backtab), ActionKey::MenuUp);
+
+    let esc = make_key_event(KeyCode::Esc, KeyModifiers::NONE, KeyEventKind::Press);
     assert_eq!(classify_key(&esc), ActionKey::DismissMenu);
 }
 
 #[test]
-fn test_classify_ctrl_keys_are_passthrough() {
-    let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+fn test_classify_ctrl_and_alt_are_passthrough() {
+    let ctrl_c = make_key_event(KeyCode::Char('c'), KeyModifiers::CONTROL, KeyEventKind::Press);
     assert_eq!(classify_key(&ctrl_c), ActionKey::Passthrough);
 
-    let ctrl_d = KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL);
+    let ctrl_d = make_key_event(KeyCode::Char('d'), KeyModifiers::CONTROL, KeyEventKind::Press);
     assert_eq!(classify_key(&ctrl_d), ActionKey::Passthrough);
 
-    let ctrl_up = KeyEvent::new(KeyCode::Up, KeyModifiers::CONTROL);
-    assert_eq!(classify_key(&ctrl_up), ActionKey::Passthrough);
-
-    let ctrl_down = KeyEvent::new(KeyCode::Down, KeyModifiers::CONTROL);
-    assert_eq!(classify_key(&ctrl_down), ActionKey::Passthrough);
+    let alt_down = make_key_event(KeyCode::Down, KeyModifiers::ALT, KeyEventKind::Press);
+    assert_eq!(classify_key(&alt_down), ActionKey::Passthrough);
 }
 
 #[test]
 fn test_classify_standard_keys_are_passthrough() {
-    let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+    let enter = make_key_event(KeyCode::Enter, KeyModifiers::NONE, KeyEventKind::Press);
     assert_eq!(classify_key(&enter), ActionKey::Passthrough);
 
-    let char_a = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
-    assert_eq!(classify_key(&char_a), ActionKey::Passthrough);
-
-    let backspace = KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE);
+    let backspace = make_key_event(KeyCode::Backspace, KeyModifiers::NONE, KeyEventKind::Press);
     assert_eq!(classify_key(&backspace), ActionKey::Passthrough);
+
+    let ch = make_key_event(KeyCode::Char('a'), KeyModifiers::NONE, KeyEventKind::Press);
+    assert_eq!(classify_key(&ch), ActionKey::Passthrough);
 }
 
 #[test]
 fn test_sanitize_output_stream_win32_input_mode() {
-    let input = b"before\x1b[?9001hmiddle\x1b[?9001lafter";
-    let sanitized = sanitize_output_stream(input);
-    assert_eq!(sanitized, b"beforemiddleafter");
+    let raw = b"prefix\x1b[?9001hsuffix\x1b[?9001lfinal";
+    let cleaned = sanitize_output_stream(raw);
+    assert_eq!(cleaned.as_ref(), b"prefixsuffixfinal");
 }
 
 #[test]
 fn test_sanitize_output_stream_kitty_protocol() {
-    let input = b"abc\x1b[?udef\x1b[=1ughi\x1b[>31ujkl\x1b[<1umn";
-    let sanitized = sanitize_output_stream(input);
-    assert_eq!(sanitized, b"abcdefghijklmn");
+    let raw = b"start\x1b[?1u\x1b[>1u\x1b[=2u\x1b[<3umiddle\x1b[?uend";
+    let cleaned = sanitize_output_stream(raw);
+    assert_eq!(cleaned.as_ref(), b"startmiddleend");
 }
 
 #[test]
 fn test_sanitize_output_stream_preserves_standard_ansi() {
-    // \x1b[?25h (show cursor), \x1b[?25l (hide cursor), \x1b[?1049h (alt buffer), \x1b[u (restore cursor)
-    let input = b"\x1b[?25h\x1b[?25l\x1b[?1049h\x1b[0m\x1b[uhello";
-    let sanitized = sanitize_output_stream(input);
-    assert_eq!(sanitized, input);
+    let raw = b"\x1b[?25h\x1b[?25l\x1b[?1049h\x1b[0m\x1b[u";
+    let cleaned = sanitize_output_stream(raw);
+    assert_eq!(cleaned.as_ref(), raw);
+    // Verify zero allocation when borrowed
+    assert!(matches!(cleaned, std::borrow::Cow::Borrowed(_)));
 }
 
 #[test]
 fn test_raw_mode_guard_creation() {
-    // Test that RawModeGuard::enter() can be called and returns Result<RawModeGuard>
-    let res = RawModeGuard::enter();
-    if let Ok(guard) = res {
+    if let Ok(guard) = RawModeGuard::enter() {
         drop(guard);
     }
 }

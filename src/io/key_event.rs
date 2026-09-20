@@ -1,7 +1,6 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
-/// High-level action classified from a terminal key event.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ActionKey {
     MenuUp,
     MenuDown,
@@ -10,15 +9,22 @@ pub enum ActionKey {
     Passthrough,
 }
 
-/// Classify key event into navigation / menu actions or passthrough.
 pub fn classify_key(event: &KeyEvent) -> ActionKey {
-    if event.modifiers.contains(KeyModifiers::CONTROL) {
+    // Ignore key release events on Windows to prevent duplicate menu navigation
+    if event.kind == KeyEventKind::Release {
         return ActionKey::Passthrough;
     }
+
+    // Do not hijack Ctrl or Alt key combinations
+    if event.modifiers.contains(KeyModifiers::CONTROL) || event.modifiers.contains(KeyModifiers::ALT) {
+        return ActionKey::Passthrough;
+    }
+
     match event.code {
         KeyCode::Up => ActionKey::MenuUp,
         KeyCode::Down => ActionKey::MenuDown,
         KeyCode::Tab => ActionKey::AcceptSuggestion,
+        KeyCode::BackTab => ActionKey::MenuUp, // Shift+Tab cycles backwards
         KeyCode::Esc => ActionKey::DismissMenu,
         _ => ActionKey::Passthrough,
     }
