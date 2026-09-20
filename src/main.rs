@@ -49,7 +49,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = core::config::Config::default();
-    let mut app = core::app::App::new(config);
+    let mut app = core::app::App::new(config, cli.shell);
     app.run().await?;
 
     Ok(())

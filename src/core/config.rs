@@ -14,3 +14,12 @@ impl Default for Config {
         }
     }
 }
+
+impl Config {
+    pub fn new(max_suggestions: usize, debounce_ms: u64) -> Self {
+        Self {
+            max_suggestions,
+            debounce_ms,
+        }
+    }
+}

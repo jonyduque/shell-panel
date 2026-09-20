@@ -95,3 +95,37 @@ fn test_raw_mode_guard_creation() {
         drop(guard);
     }
 }
+
+#[test]
+fn test_encode_key_event() {
+    use shell_panel::io::key_event::encode_key_event;
+
+    // Normal characters
+    let a = make_key_event(KeyCode::Char('a'), KeyModifiers::NONE, KeyEventKind::Press);
+    assert_eq!(encode_key_event(&a), b"a");
+
+    // Enter, backspace, tab, esc
+    let enter = make_key_event(KeyCode::Enter, KeyModifiers::NONE, KeyEventKind::Press);
+    assert_eq!(encode_key_event(&enter), b"\r");
+
+    let backspace = make_key_event(KeyCode::Backspace, KeyModifiers::NONE, KeyEventKind::Press);
+    assert_eq!(encode_key_event(&backspace), b"\x08");
+
+    let tab = make_key_event(KeyCode::Tab, KeyModifiers::NONE, KeyEventKind::Press);
+    assert_eq!(encode_key_event(&tab), b"\t");
+
+    let esc = make_key_event(KeyCode::Esc, KeyModifiers::NONE, KeyEventKind::Press);
+    assert_eq!(encode_key_event(&esc), b"\x1b");
+
+    // Ctrl+C -> 0x03
+    let ctrl_c = make_key_event(KeyCode::Char('c'), KeyModifiers::CONTROL, KeyEventKind::Press);
+    assert_eq!(encode_key_event(&ctrl_c), vec![0x03]);
+
+    // Arrows
+    let up = make_key_event(KeyCode::Up, KeyModifiers::NONE, KeyEventKind::Press);
+    assert_eq!(encode_key_event(&up), b"\x1b[A");
+
+    let down = make_key_event(KeyCode::Down, KeyModifiers::NONE, KeyEventKind::Press);
+    assert_eq!(encode_key_event(&down), b"\x1b[B");
+}
+
