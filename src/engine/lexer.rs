@@ -7,7 +7,7 @@ pub struct CommandToken {
     pub text: String,
     /// Terminal display width of the token text.
     pub width: usize,
-    /// Whether this token is complete (i.e. followed by a space or separator).
+    /// Whether this token is complete (i.e. followed by a space, separator, or closed quote).
     pub complete: bool,
     /// Whether this token is an option/flag (starts with `-`).
     pub is_option: bool,
@@ -31,32 +31,48 @@ impl CommandToken {
 struct RawToken {
     text: String,
     is_option: bool,
+    closed_quote: bool,
 }
 
 /// Lexes a PowerShell command line string into a list of `CommandToken`s.
 ///
 /// Delimiters: `|`, `;`, `&&`, `||` outside quotes split the input into segments.
-/// Only the last non-empty command segment is lexed.
+/// Only the active (last) command segment is lexed. If the input ends with a delimiter,
+/// an empty token is returned for completing the next command.
 pub fn lex_command_line(input: &str) -> Vec<CommandToken> {
+    if input.trim().is_empty() {
+        return Vec::new();
+    }
+
     let segments = split_segments(input);
-    let last_segment = match segments.into_iter().filter(|s| !s.trim().is_empty()).last() {
-        Some(s) => s,
-        None => return Vec::new(),
-    };
+    if segments.is_empty() {
+        return Vec::new();
+    }
+
+    let last_segment = *segments.last().unwrap_or(&"");
+
+    // If input ends with a pipeline or delimiter (e.g. `cat file.txt | ` or `foo; `),
+    // the active command segment is the empty/whitespace text after the delimiter.
+    if last_segment.trim().is_empty() {
+        if segments.len() > 1 {
+            return vec![CommandToken::new("", false, false)];
+        }
+        return Vec::new();
+    }
 
     let raw_tokens = lex_segment(last_segment);
     if raw_tokens.is_empty() {
         return Vec::new();
     }
 
-    let ends_with_space = input.ends_with(' ') || input.ends_with('\t');
+    let ends_with_space = last_segment.ends_with(' ') || last_segment.ends_with('\t');
     let mut tokens = Vec::with_capacity(raw_tokens.len() + if ends_with_space { 1 } else { 0 });
 
     let len = raw_tokens.len();
     for (i, raw) in raw_tokens.into_iter().enumerate() {
         let is_last = i == len - 1;
         let complete = if is_last {
-            ends_with_space
+            raw.closed_quote || ends_with_space
         } else {
             true
         };
@@ -182,6 +198,7 @@ fn lex_segment(segment: &str) -> Vec<RawToken> {
         let mut token_active = false;
         let mut in_single = false;
         let mut in_double = false;
+        let mut closed_quote = false;
         let mut is_flag_candidate = chars[i] == '-';
 
         while i < len {
@@ -196,6 +213,7 @@ fn lex_segment(segment: &str) -> Vec<RawToken> {
                     } else {
                         // Closing single quote
                         in_single = false;
+                        closed_quote = true;
                         i += 1;
                     }
                 } else {
@@ -213,6 +231,7 @@ fn lex_segment(segment: &str) -> Vec<RawToken> {
                     }
                 } else if c == '"' {
                     in_double = false;
+                    closed_quote = true;
                     i += 1;
                 } else {
                     current.push(c);
@@ -249,11 +268,11 @@ fn lex_segment(segment: &str) -> Vec<RawToken> {
                     tokens.push(RawToken {
                         text: flag_text,
                         is_option,
+                        closed_quote: false,
                     });
 
                     // The following part is an argument, not another flag
                     is_flag_candidate = false;
-                    // Token is active even if empty (e.g. `--name=`)
                     token_active = true;
                 } else {
                     token_active = true;
@@ -268,6 +287,7 @@ fn lex_segment(segment: &str) -> Vec<RawToken> {
             tokens.push(RawToken {
                 text: current,
                 is_option,
+                closed_quote,
             });
         }
     }

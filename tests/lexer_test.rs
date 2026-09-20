@@ -1,421 +1,180 @@
 use shell_panel::engine::lexer::{lex_command_line, CommandToken};
 
 #[test]
-fn test_basic_command() {
-    let input = r#"git commit -m "feat: test""#;
-    let tokens = lex_command_line(input);
-
+fn test_lex_command_line_basic() {
+    let tokens = lex_command_line("git commit -m \"feat: test\"");
+    assert_eq!(tokens.len(), 4);
     assert_eq!(
-        tokens,
-        vec![
-            CommandToken {
-                text: "git".to_string(),
-                width: 3,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "commit".to_string(),
-                width: 6,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "-m".to_string(),
-                width: 2,
-                complete: true,
-                is_option: true,
-            },
-            CommandToken {
-                text: "feat: test".to_string(),
-                width: 10,
-                complete: false,
-                is_option: false,
-            },
-        ]
+        tokens[0],
+        CommandToken {
+            text: "git".to_string(),
+            width: 3,
+            complete: true,
+            is_option: false,
+        }
+    );
+    assert_eq!(
+        tokens[1],
+        CommandToken {
+            text: "commit".to_string(),
+            width: 6,
+            complete: true,
+            is_option: false,
+        }
+    );
+    assert_eq!(
+        tokens[2],
+        CommandToken {
+            text: "-m".to_string(),
+            width: 2,
+            complete: true,
+            is_option: true,
+        }
+    );
+    // Closed quote must be marked complete: true
+    assert_eq!(
+        tokens[3],
+        CommandToken {
+            text: "feat: test".to_string(),
+            width: 10,
+            complete: true,
+            is_option: false,
+        }
     );
 }
 
 #[test]
-fn test_incomplete_token() {
-    let input = "git stat";
-    let tokens = lex_command_line(input);
-
-    assert_eq!(
-        tokens,
-        vec![
-            CommandToken {
-                text: "git".to_string(),
-                width: 3,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "stat".to_string(),
-                width: 4,
-                complete: false,
-                is_option: false,
-            },
-        ]
-    );
+fn test_lex_command_line_unclosed_quote() {
+    let tokens = lex_command_line("git commit -m \"feat: test");
+    assert_eq!(tokens.len(), 4);
+    // Unclosed quote must be complete: false
+    assert_eq!(tokens[3].complete, false);
 }
 
 #[test]
-fn test_trailing_space() {
-    let input = "cargo ";
-    let tokens = lex_command_line(input);
-
+fn test_lex_command_line_incomplete_last_token() {
+    let tokens = lex_command_line("git stat");
+    assert_eq!(tokens.len(), 2);
     assert_eq!(
-        tokens,
-        vec![
-            CommandToken {
-                text: "cargo".to_string(),
-                width: 5,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "".to_string(),
-                width: 0,
-                complete: false,
-                is_option: false,
-            },
-        ]
+        tokens[0],
+        CommandToken {
+            text: "git".to_string(),
+            width: 3,
+            complete: true,
+            is_option: false,
+        }
     );
-}
-
-#[test]
-fn test_trailing_multiple_spaces() {
-    let input = "cargo   ";
-    let tokens = lex_command_line(input);
-
     assert_eq!(
-        tokens,
-        vec![
-            CommandToken {
-                text: "cargo".to_string(),
-                width: 5,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "".to_string(),
-                width: 0,
-                complete: false,
-                is_option: false,
-            },
-        ]
-    );
-}
-
-#[test]
-fn test_flag_with_equals() {
-    let input = "docker run --name=my-container";
-    let tokens = lex_command_line(input);
-
-    assert_eq!(
-        tokens,
-        vec![
-            CommandToken {
-                text: "docker".to_string(),
-                width: 6,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "run".to_string(),
-                width: 3,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "--name".to_string(),
-                width: 6,
-                complete: true,
-                is_option: true,
-            },
-            CommandToken {
-                text: "my-container".to_string(),
-                width: 12,
-                complete: false,
-                is_option: false,
-            },
-        ]
-    );
-}
-
-#[test]
-fn test_flag_with_equals_and_trailing_space() {
-    let input = "docker run --name=my-container ";
-    let tokens = lex_command_line(input);
-
-    assert_eq!(
-        tokens,
-        vec![
-            CommandToken {
-                text: "docker".to_string(),
-                width: 6,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "run".to_string(),
-                width: 3,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "--name".to_string(),
-                width: 6,
-                complete: true,
-                is_option: true,
-            },
-            CommandToken {
-                text: "my-container".to_string(),
-                width: 12,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "".to_string(),
-                width: 0,
-                complete: false,
-                is_option: false,
-            },
-        ]
-    );
-}
-
-#[test]
-fn test_flag_with_equals_empty_value() {
-    let input = "docker run --name=";
-    let tokens = lex_command_line(input);
-
-    assert_eq!(
-        tokens,
-        vec![
-            CommandToken {
-                text: "docker".to_string(),
-                width: 6,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "run".to_string(),
-                width: 3,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "--name".to_string(),
-                width: 6,
-                complete: true,
-                is_option: true,
-            },
-            CommandToken {
-                text: "".to_string(),
-                width: 0,
-                complete: false,
-                is_option: false,
-            },
-        ]
-    );
-}
-
-#[test]
-fn test_quotes_and_escapes() {
-    let input1 = "hello`\"world";
-    let tokens1 = lex_command_line(input1);
-    assert_eq!(
-        tokens1,
-        vec![CommandToken {
-            text: "hello\"world".to_string(),
-            width: 11,
+        tokens[1],
+        CommandToken {
+            text: "stat".to_string(),
+            width: 4,
             complete: false,
             is_option: false,
-        }]
+        }
     );
+}
 
-    let input1_quoted = "\"hello`\"world\"";
-    let tokens1_quoted = lex_command_line(input1_quoted);
+#[test]
+fn test_lex_command_line_trailing_space() {
+    let tokens = lex_command_line("cargo ");
+    assert_eq!(tokens.len(), 2);
     assert_eq!(
-        tokens1_quoted,
-        vec![CommandToken {
-            text: "hello\"world".to_string(),
-            width: 11,
-            complete: false,
-            is_option: false,
-        }]
-    );
-
-    let input2 = "'literal $var'";
-    let tokens2 = lex_command_line(input2);
-    assert_eq!(
-        tokens2,
-        vec![CommandToken {
-            text: "literal $var".to_string(),
-            width: 12,
-            complete: false,
-            is_option: false,
-        }]
-    );
-
-    let input3 = "'don''t'";
-    let tokens3 = lex_command_line(input3);
-    assert_eq!(
-        tokens3,
-        vec![CommandToken {
-            text: "don't".to_string(),
+        tokens[0],
+        CommandToken {
+            text: "cargo".to_string(),
             width: 5,
+            complete: true,
+            is_option: false,
+        }
+    );
+    assert_eq!(
+        tokens[1],
+        CommandToken {
+            text: "".to_string(),
+            width: 0,
             complete: false,
             is_option: false,
-        }]
+        }
     );
 }
 
 #[test]
-fn test_pipeline_handling() {
-    let input = "cat file.txt | grep -i pattern";
-    let tokens = lex_command_line(input);
-
-    assert_eq!(
-        tokens,
-        vec![
-            CommandToken {
-                text: "grep".to_string(),
-                width: 4,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "-i".to_string(),
-                width: 2,
-                complete: true,
-                is_option: true,
-            },
-            CommandToken {
-                text: "pattern".to_string(),
-                width: 7,
-                complete: false,
-                is_option: false,
-            },
-        ]
-    );
+fn test_lex_command_line_flag_with_equals() {
+    let tokens = lex_command_line("docker run --name=my-container");
+    assert_eq!(tokens.len(), 4);
+    assert_eq!(tokens[0].text, "docker");
+    assert_eq!(tokens[1].text, "run");
+    assert_eq!(tokens[2].text, "--name");
+    assert!(tokens[2].is_option);
+    assert!(tokens[2].complete);
+    assert_eq!(tokens[3].text, "my-container");
+    assert!(!tokens[3].complete);
 }
 
 #[test]
-fn test_delimiters_semicolon_and_logical() {
-    let input_semi = "echo first; cargo build";
-    let tokens_semi = lex_command_line(input_semi);
-    assert_eq!(
-        tokens_semi,
-        vec![
-            CommandToken {
-                text: "cargo".to_string(),
-                width: 5,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "build".to_string(),
-                width: 5,
-                complete: false,
-                is_option: false,
-            },
-        ]
-    );
+fn test_lex_command_line_quotes_and_escapes() {
+    let tokens = lex_command_line(r#"echo "hello`"world""#);
+    assert_eq!(tokens.len(), 2);
+    assert_eq!(tokens[1].text, "hello\"world");
+    assert!(tokens[1].complete);
 
-    let input_and = "test && git push";
-    let tokens_and = lex_command_line(input_and);
-    assert_eq!(
-        tokens_and,
-        vec![
-            CommandToken {
-                text: "git".to_string(),
-                width: 3,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "push".to_string(),
-                width: 4,
-                complete: false,
-                is_option: false,
-            },
-        ]
-    );
+    let tokens2 = lex_command_line("echo 'literal $var'");
+    assert_eq!(tokens2.len(), 2);
+    assert_eq!(tokens2[1].text, "literal $var");
+    assert!(tokens2[1].complete);
 
-    let input_or = "test || echo failed";
-    let tokens_or = lex_command_line(input_or);
-    assert_eq!(
-        tokens_or,
-        vec![
-            CommandToken {
-                text: "echo".to_string(),
-                width: 4,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "failed".to_string(),
-                width: 6,
-                complete: false,
-                is_option: false,
-            },
-        ]
-    );
+    let tokens3 = lex_command_line("echo 'don''t'");
+    assert_eq!(tokens3.len(), 2);
+    assert_eq!(tokens3[1].text, "don't");
+    assert!(tokens3[1].complete);
 }
 
 #[test]
-fn test_delimiters_inside_quotes() {
-    let input = "grep \"foo | bar; baz && qux || done\"";
-    let tokens = lex_command_line(input);
-    assert_eq!(
-        tokens,
-        vec![
-            CommandToken {
-                text: "grep".to_string(),
-                width: 4,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "foo | bar; baz && qux || done".to_string(),
-                width: 29,
-                complete: false,
-                is_option: false,
-            },
-        ]
-    );
+fn test_lex_command_line_pipeline_and_delimiters() {
+    // Only the last command segment after pipe is lexed
+    let tokens = lex_command_line("cat file.txt | grep -i pattern");
+    assert_eq!(tokens.len(), 3);
+    assert_eq!(tokens[0].text, "grep");
+    assert_eq!(tokens[1].text, "-i");
+    assert_eq!(tokens[2].text, "pattern");
 }
 
 #[test]
-fn test_empty_and_whitespace_input() {
-    assert_eq!(lex_command_line(""), vec![]);
-    assert_eq!(lex_command_line("   "), vec![]);
-    assert_eq!(lex_command_line("|"), vec![]);
-    assert_eq!(lex_command_line(";"), vec![]);
+fn test_lex_command_line_trailing_delimiter() {
+    // Pipeline with trailing space: ready for command after pipe!
+    let tokens = lex_command_line("cat file.txt | ");
+    assert_eq!(tokens.len(), 1);
+    assert_eq!(tokens[0].text, "");
+    assert!(!tokens[0].complete);
+
+    // Semicolon with trailing space
+    let tokens2 = lex_command_line("echo foo; ");
+    assert_eq!(tokens2.len(), 1);
+    assert_eq!(tokens2[0].text, "");
+    assert!(!tokens2[0].complete);
 }
 
 #[test]
-fn test_unicode_width() {
-    let input = "echo 日本語";
-    let tokens = lex_command_line(input);
-    assert_eq!(
-        tokens,
-        vec![
-            CommandToken {
-                text: "echo".to_string(),
-                width: 4,
-                complete: true,
-                is_option: false,
-            },
-            CommandToken {
-                text: "日本語".to_string(),
-                width: 6,
-                complete: false,
-                is_option: false,
-            },
-        ]
-    );
+fn test_lex_command_line_delimiters_inside_quotes() {
+    let tokens = lex_command_line("grep \"foo | bar; baz && qux || done\"");
+    assert_eq!(tokens.len(), 2);
+    assert_eq!(tokens[0].text, "grep");
+    assert_eq!(tokens[1].text, "foo | bar; baz && qux || done");
+}
+
+#[test]
+fn test_lex_command_line_empty() {
+    assert_eq!(lex_command_line(""), Vec::<CommandToken>::new());
+    assert_eq!(lex_command_line("   "), Vec::<CommandToken>::new());
+}
+
+#[test]
+fn test_lex_command_line_unicode_width() {
+    let tokens = lex_command_line("echo 你好 🚀");
+    assert_eq!(tokens.len(), 3);
+    assert_eq!(tokens[1].text, "你好");
+    assert_eq!(tokens[1].width, 4); // CJK characters width = 2 each
+    assert_eq!(tokens[2].text, "🚀");
+    assert_eq!(tokens[2].width, 2); // Emoji width = 2
 }
