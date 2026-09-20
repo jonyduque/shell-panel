@@ -80,20 +80,23 @@ impl CompletionProvider for ZoxideProvider {
     }
 
     fn can_handle(&self, cmd: &str) -> bool {
-        cmd == "cd" || cmd == "z" || cmd == "zi"
+        cmd.eq_ignore_ascii_case("cd") || cmd.eq_ignore_ascii_case("z") || cmd.eq_ignore_ascii_case("zi")
     }
 
     async fn complete(&self, cmd_line: &str, _cwd: &str) -> Vec<Suggestion> {
         let tokens = lex_command_line(cmd_line);
+        if tokens.is_empty() || (tokens.len() == 1 && !tokens[0].complete) {
+            return Vec::new();
+        }
         let prefix = tokens.last().map(|t| t.text.as_str()).unwrap_or("");
 
-        let output = match Command::new(&self.binary_path)
+        let query_future = Command::new(&self.binary_path)
             .arg("query")
             .arg("-l")
-            .output()
-            .await
-        {
-            Ok(out) if out.status.success() => out,
+            .output();
+
+        let output = match tokio::time::timeout(std::time::Duration::from_millis(150), query_future).await {
+            Ok(Ok(out)) if out.status.success() => out,
             _ => return Vec::new(),
         };
 

@@ -104,8 +104,8 @@ impl CompletionProvider for CarapaceProvider {
             cmd.arg(&token.text);
         }
 
-        let output = match cmd.output().await {
-            Ok(out) if out.status.success() => out,
+        let output = match tokio::time::timeout(std::time::Duration::from_millis(200), cmd.output()).await {
+            Ok(Ok(out)) if out.status.success() => out,
             _ => return Vec::new(),
         };
 

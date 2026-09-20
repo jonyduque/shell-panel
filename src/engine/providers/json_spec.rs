@@ -145,7 +145,10 @@ impl CompletionProvider for JsonSpecProvider {
         let mut curr_options = &spec.options;
 
         if tokens.len() == 1 {
-            // User typed only the root command without space (e.g. "git")
+            if !tokens[0].complete {
+                return Vec::new();
+            }
+            // User typed only the root command
             let mut results = Vec::new();
             for subcmd in curr_subcommands {
                 results.push(Suggestion::new(

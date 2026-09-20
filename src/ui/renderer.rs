@@ -27,7 +27,7 @@ impl Renderer {
         cursor_y: u16,
         out: &mut W,
     ) -> std::io::Result<Option<DropdownLayout>> {
-        if !state.visible || state.total_items() == 0 {
+        if term.cols == 0 || term.rows == 0 || !state.visible || state.total_items() == 0 {
             return Ok(None);
         }
 
@@ -39,29 +39,31 @@ impl Renderer {
         let page_len = page.len() as u16;
 
         // Determine dropdown vertical placement
-        let start_row = if cursor_y + 1 + page_len <= term.rows {
+        let start_row = if cursor_y.saturating_add(1).saturating_add(page_len) <= term.rows {
             // Render below cursor
-            cursor_y + 1
+            cursor_y.saturating_add(1)
         } else if cursor_y >= page_len {
             // Render above cursor
-            cursor_y - page_len
+            cursor_y.saturating_sub(page_len)
         } else {
             // Render below clamped to terminal boundary
-            (cursor_y + 1).min(term.rows.saturating_sub(page_len))
+            cursor_y.saturating_add(1).min(term.rows.saturating_sub(page_len))
         };
 
         let col = (cursor_x + 1).min(term.cols);
-        let available_cols = (term.cols as usize).saturating_sub(col as usize - 1);
+        let available_cols = (term.cols as usize).saturating_sub((col as usize).saturating_sub(1));
         let target_min_width = 30.min(available_cols);
 
         // Hide cursor and save cursor position
         write!(out, "\x1b[?25l\x1b[s")?;
 
+        let mut rendered_rows = 0u16;
         for (i, (sug, selected)) in page.iter().enumerate() {
             let target_row = start_row + i as u16;
             if target_row >= term.rows {
                 break;
             }
+            rendered_rows += 1;
 
             let prefix = if *selected {
                 Theme::SELECTED_PREFIX
@@ -88,7 +90,7 @@ impl Renderer {
 
         Ok(Some(DropdownLayout {
             start_row,
-            row_count: page_len,
+            row_count: rendered_rows,
         }))
     }
 

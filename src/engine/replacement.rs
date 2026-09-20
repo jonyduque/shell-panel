@@ -16,20 +16,21 @@ pub struct ReplacementAction {
 ///
 /// Uses character count rather than byte count for safe Unicode (CJK/emojis) backspacing.
 pub fn calculate_replacement(typed: &str, suggestion: &str) -> ReplacementAction {
+    let trailing_space = if suggestion.ends_with('/') || suggestion.ends_with('\\') {
+        ""
+    } else {
+        " "
+    };
+
     if suggestion.starts_with(typed) {
         ReplacementAction {
             backspace_count: 0,
-            insert_text: format!("{} ", &suggestion[typed.len()..]),
-        }
-    } else if suggestion.to_lowercase().starts_with(&typed.to_lowercase()) {
-        ReplacementAction {
-            backspace_count: typed.chars().count(),
-            insert_text: format!("{} ", suggestion),
+            insert_text: format!("{}{}", &suggestion[typed.len()..], trailing_space),
         }
     } else {
         ReplacementAction {
             backspace_count: typed.chars().count(),
-            insert_text: format!("{} ", suggestion),
+            insert_text: format!("{}{}", suggestion, trailing_space),
         }
     }
 }
