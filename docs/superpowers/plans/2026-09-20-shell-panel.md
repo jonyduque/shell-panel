@@ -594,12 +594,12 @@ fn test_lex_command_line() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --test lexer_test`
 Expected: FAIL with module not found.
 
-- [ ] **Step 3: Implement `lexer.rs`**
+- [x] **Step 3: Implement `lexer.rs`**
 
 ```rust
 // src/engine/lexer.rs
@@ -687,12 +687,12 @@ pub fn lex_command_line(input: &str) -> Vec<CommandToken> {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cargo test --test lexer_test`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/engine/lexer.rs tests/lexer_test.rs
@@ -835,12 +835,12 @@ pub mod carapace;
 pub mod zoxide;
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cargo test --test engine_test`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/engine/ tests/engine_test.rs
@@ -859,7 +859,7 @@ git commit -m "feat(engine): implement completion provider trait, file completer
 - Modify: `src/ui/mod.rs`
 - Test: `tests/renderer_test.rs`
 
-- [ ] **Step 1: Write failing test for suggestion state pagination and layout calculation**
+- [x] **Step 1: Write failing test for suggestion state pagination and layout calculation**
 
 ```rust
 // tests/renderer_test.rs
@@ -887,12 +887,12 @@ fn test_suggestion_state_navigation() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --test renderer_test`
 Expected: FAIL with module not found.
 
-- [ ] **Step 3: Implement `suggestion_state.rs`, `theme.rs`, `patch.rs` and `renderer.rs`**
+- [x] **Step 3: Implement `suggestion_state.rs`, `theme.rs`, `patch.rs` and `renderer.rs`**
 
 ```rust
 // src/ui/suggestion_state.rs
@@ -1031,12 +1031,12 @@ pub mod suggestion_state;
 pub mod theme;
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cargo test --test renderer_test`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ui/ tests/renderer_test.rs
