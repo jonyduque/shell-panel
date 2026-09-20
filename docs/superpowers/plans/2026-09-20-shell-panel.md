@@ -18,7 +18,7 @@
 - Modify: `src/pty/mod.rs`
 - Test: `tests/pty_test.rs`
 
-- [ ] **Step 1: Write test for shell detection and ConPTY initialization**
+- [x] **Step 1: Write test for shell detection and ConPTY initialization**
 
 ```rust
 // tests/pty_test.rs
@@ -31,12 +31,12 @@ fn test_detect_shell() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --test pty_test`
 Expected: FAIL with module/type not found.
 
-- [ ] **Step 3: Implement `shell.rs` and `conpty.rs`**
+- [x] **Step 3: Implement `shell.rs` and `conpty.rs`**
 
 ```rust
 // src/pty/shell.rs
@@ -143,12 +143,12 @@ pub mod conpty;
 pub mod shell;
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cargo test --test pty_test`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/pty/ tests/pty_test.rs
@@ -165,7 +165,7 @@ git commit -m "feat(pty): implement shell detection and ConPTY session spawning"
 - Modify: `src/shell/mod.rs`
 - Test: `tests/osc_test.rs`
 
-- [ ] **Step 1: Write failing test for OSC 6973 sequence parsing**
+- [x] **Step 1: Write failing test for OSC 6973 sequence parsing**
 
 ```rust
 // tests/osc_test.rs
@@ -183,12 +183,12 @@ fn test_parse_osc_sequences() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --test osc_test`
 Expected: FAIL with module not found.
 
-- [ ] **Step 3: Implement `osc.rs` and `command_state.rs`**
+- [x] **Step 3: Implement `osc.rs` and `command_state.rs`**
 
 ```rust
 // src/shell/osc.rs
@@ -283,12 +283,12 @@ pub mod command_state;
 pub mod osc;
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cargo test --test osc_test`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/shell/ tests/osc_test.rs
