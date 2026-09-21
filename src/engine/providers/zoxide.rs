@@ -93,6 +93,7 @@ impl CompletionProvider for ZoxideProvider {
         let query_future = Command::new(&self.binary_path)
             .arg("query")
             .arg("-l")
+            .kill_on_drop(true)
             .output();
 
         let output =

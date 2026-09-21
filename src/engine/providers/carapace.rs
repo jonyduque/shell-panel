@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use tokio::process::Command;
 
-use crate::engine::lexer::lex_command_line;
+use crate::engine::lexer::{lex_command_line, CommandToken};
 use crate::engine::provider::{CompletionProvider, Suggestion, SuggestionKind};
 
 /// Represents an entry in Carapace's export JSON format.
@@ -56,6 +56,16 @@ impl CarapaceProvider {
     }
 }
 
+/// Builds the arguments for `carapace <completer> export <completer> <args...>`.
+pub fn carapace_args(tokens: &[CommandToken]) -> Vec<String> {
+    let Some(root) = tokens.first() else {
+        return Vec::new();
+    };
+    let mut args = vec![root.text.clone(), "export".to_string()];
+    args.extend(tokens.iter().map(|t| t.text.clone()));
+    args
+}
+
 /// Parses Carapace JSON export output into a list of `Suggestion`s.
 pub fn parse_carapace_json(json_str: &str) -> Vec<Suggestion> {
     let items: Vec<CarapaceItem> = match serde_json::from_str::<CarapaceFormat>(json_str) {
@@ -94,19 +104,15 @@ impl CompletionProvider for CarapaceProvider {
     }
 
     async fn complete(&self, cmd_line: &str, cwd: &str) -> Vec<Suggestion> {
-        let tokens = lex_command_line(cmd_line);
-        if tokens.is_empty() {
+        let args = carapace_args(&lex_command_line(cmd_line));
+        if args.is_empty() {
             return Vec::new();
         }
 
         let mut cmd = Command::new(&self.binary_path);
-        cmd.arg("_carapace").arg("export");
+        cmd.args(&args).kill_on_drop(true);
         if !cwd.is_empty() {
             cmd.current_dir(cwd);
-        }
-
-        for token in &tokens {
-            cmd.arg(&token.text);
         }
 
         let output =
@@ -115,7 +121,6 @@ impl CompletionProvider for CarapaceProvider {
                 _ => return Vec::new(),
             };
 
-        let stdout_str = String::from_utf8_lossy(&output.stdout);
-        parse_carapace_json(&stdout_str)
+        parse_carapace_json(&String::from_utf8_lossy(&output.stdout))
     }
 }

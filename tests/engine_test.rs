@@ -1,8 +1,11 @@
 use std::fs::{create_dir_all, remove_dir_all, File};
 use std::io::Write;
 
+use shell_panel::engine::lexer::lex_command_line;
 use shell_panel::engine::provider::{CompletionProvider, SuggestionKind};
-use shell_panel::engine::providers::carapace::{parse_carapace_json, CarapaceProvider};
+use shell_panel::engine::providers::carapace::{
+    carapace_args, parse_carapace_json, CarapaceProvider,
+};
 use shell_panel::engine::providers::files::FileProvider;
 use shell_panel::engine::providers::json_spec::{FigSpec, JsonSpecProvider};
 use shell_panel::engine::providers::zoxide::{parse_zoxide_output, ZoxideProvider};
@@ -325,6 +328,20 @@ fn test_carapace_provider_parse() {
     // Invalid JSON returns empty vec
     let invalid = parse_carapace_json("not json");
     assert!(invalid.is_empty());
+}
+
+#[test]
+fn test_carapace_args_use_completer_export_form() {
+    // `carapace <completer> export <completer> <args...>`; `_carapace` would complete carapace itself.
+    assert_eq!(
+        carapace_args(&lex_command_line("git sta")),
+        vec!["git", "export", "git", "sta"]
+    );
+    assert_eq!(
+        carapace_args(&lex_command_line("npm ")),
+        vec!["npm", "export", "npm", ""]
+    );
+    assert!(carapace_args(&lex_command_line("")).is_empty());
 }
 
 // =========================================================================
