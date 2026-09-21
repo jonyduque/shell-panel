@@ -107,6 +107,15 @@ impl HeadlessTerminal {
             }
         }
 
+        // If the extracted text contains a shell prompt marker (e.g. '❯' from Oh-My-Posh / Starship
+        // or '>' from standard PowerShell 'PS C:\...>'), isolate the command line after the last marker.
+        if let Some(pos) = result.rfind('❯') {
+            return result[pos + '❯'.len_utf8()..].trim_start().to_string();
+        }
+        if let Some(pos) = result.rfind('>') {
+            return result[pos + 1..].trim_start().to_string();
+        }
+
         result
     }
 }

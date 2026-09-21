@@ -121,3 +121,18 @@ fn test_alternate_screen_buffer_detection() {
     vt.process(b"\x1b[?1049l");
     assert!(!vt.is_alternate_buffer());
 }
+
+#[test]
+fn test_prompt_marker_isolation_oh_my_posh_and_powershell() {
+    let mut vt = HeadlessTerminal::new(80, 24);
+    // Oh-My-Posh / Starship multiline prompt ending with chevron '❯'
+    vt.process(" repo   master \r\n❯ git clone https://github.com/test".as_bytes());
+    let cmd = vt.extract_command_text(0, 0);
+    assert_eq!(cmd, "git clone https://github.com/test");
+
+    // Standard PowerShell prompt ending with '>'
+    let mut vt2 = HeadlessTerminal::new(80, 24);
+    vt2.process(b"PS C:\\Users\\jonyd> git commit -m 'test'");
+    let cmd2 = vt2.extract_command_text(0, 0);
+    assert_eq!(cmd2, "git commit -m 'test'");
+}
