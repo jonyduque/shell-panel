@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, KeyEventState};
 use shell_panel::io::filter::sanitize_output_stream;
-use shell_panel::io::key_event::{classify_key, ActionKey};
+use shell_panel::io::key_event::{classify_key, encode_key_event, ActionKey};
 use shell_panel::io::raw_mode::RawModeGuard;
 
 fn make_key_event(code: KeyCode, modifiers: KeyModifiers, kind: KeyEventKind) -> KeyEvent {
@@ -109,7 +109,7 @@ fn test_encode_key_event() {
     assert_eq!(encode_key_event(&enter), b"\r");
 
     let backspace = make_key_event(KeyCode::Backspace, KeyModifiers::NONE, KeyEventKind::Press);
-    assert_eq!(encode_key_event(&backspace), b"\x08");
+    assert_eq!(encode_key_event(&backspace), b"\x7f");
 
     let tab = make_key_event(KeyCode::Tab, KeyModifiers::NONE, KeyEventKind::Press);
     assert_eq!(encode_key_event(&tab), b"\t");
@@ -128,4 +128,35 @@ fn test_encode_key_event() {
     let down = make_key_event(KeyCode::Down, KeyModifiers::NONE, KeyEventKind::Press);
     assert_eq!(encode_key_event(&down), b"\x1b[B");
 }
+
+#[test]
+fn test_backspace_emits_del_0x7f() {
+    let ev = KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE);
+    assert_eq!(encode_key_event(&ev), vec![0x7f]);
+}
+
+#[test]
+fn test_ctrl_shift_arrows_emit_xterm_code_6() {
+    let right_ctrl_shift = KeyEvent::new(
+        KeyCode::Right,
+        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+    );
+    assert_eq!(encode_key_event(&right_ctrl_shift), b"\x1b[1;6C".to_vec());
+
+    let left_ctrl_shift = KeyEvent::new(
+        KeyCode::Left,
+        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+    );
+    assert_eq!(encode_key_event(&left_ctrl_shift), b"\x1b[1;6D".to_vec());
+
+    let home_shift = KeyEvent::new(KeyCode::Home, KeyModifiers::SHIFT);
+    assert_eq!(encode_key_event(&home_shift), b"\x1b[1;2H".to_vec());
+
+    let end_ctrl_shift = KeyEvent::new(
+        KeyCode::End,
+        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+    );
+    assert_eq!(encode_key_event(&end_ctrl_shift), b"\x1b[1;6F".to_vec());
+}
+
 

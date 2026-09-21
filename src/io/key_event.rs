@@ -30,8 +30,23 @@ pub fn classify_key(event: &KeyEvent) -> ActionKey {
     }
 }
 
+fn xterm_modifier_code(modifiers: KeyModifiers) -> u8 {
+    let mut code = 1u8;
+    if modifiers.contains(KeyModifiers::SHIFT) {
+        code += 1;
+    }
+    if modifiers.contains(KeyModifiers::ALT) {
+        code += 2;
+    }
+    if modifiers.contains(KeyModifiers::CONTROL) {
+        code += 4;
+    }
+    code
+}
+
 /// Encodes a crossterm [`KeyEvent`] into raw VT/terminal byte sequence for writing to PTY.
 pub fn encode_key_event(event: &KeyEvent) -> Vec<u8> {
+    let mod_code = xterm_modifier_code(event.modifiers);
     match event.code {
         KeyCode::Char(c) => {
             if event.modifiers.contains(KeyModifiers::CONTROL) {
@@ -64,52 +79,80 @@ pub fn encode_key_event(event: &KeyEvent) -> Vec<u8> {
             }
         }
         KeyCode::Enter => vec![b'\r'],
-        KeyCode::Backspace => vec![b'\x08'],
+        KeyCode::Backspace => vec![b'\x7f'],
         KeyCode::Tab => vec![b'\t'],
         KeyCode::BackTab => vec![0x1b, b'[', b'Z'],
         KeyCode::Esc => vec![0x1b],
         KeyCode::Up => {
-            if event.modifiers.contains(KeyModifiers::CONTROL) {
-                b"\x1b[1;5A".to_vec()
-            } else if event.modifiers.contains(KeyModifiers::SHIFT) {
-                b"\x1b[1;2A".to_vec()
+            if mod_code > 1 {
+                format!("\x1b[1;{}A", mod_code).into_bytes()
             } else {
                 b"\x1b[A".to_vec()
             }
         }
         KeyCode::Down => {
-            if event.modifiers.contains(KeyModifiers::CONTROL) {
-                b"\x1b[1;5B".to_vec()
-            } else if event.modifiers.contains(KeyModifiers::SHIFT) {
-                b"\x1b[1;2B".to_vec()
+            if mod_code > 1 {
+                format!("\x1b[1;{}B", mod_code).into_bytes()
             } else {
                 b"\x1b[B".to_vec()
             }
         }
         KeyCode::Right => {
-            if event.modifiers.contains(KeyModifiers::CONTROL) {
-                b"\x1b[1;5C".to_vec()
-            } else if event.modifiers.contains(KeyModifiers::SHIFT) {
-                b"\x1b[1;2C".to_vec()
+            if mod_code > 1 {
+                format!("\x1b[1;{}C", mod_code).into_bytes()
             } else {
                 b"\x1b[C".to_vec()
             }
         }
         KeyCode::Left => {
-            if event.modifiers.contains(KeyModifiers::CONTROL) {
-                b"\x1b[1;5D".to_vec()
-            } else if event.modifiers.contains(KeyModifiers::SHIFT) {
-                b"\x1b[1;2D".to_vec()
+            if mod_code > 1 {
+                format!("\x1b[1;{}D", mod_code).into_bytes()
             } else {
                 b"\x1b[D".to_vec()
             }
         }
-        KeyCode::Home => b"\x1b[H".to_vec(),
-        KeyCode::End => b"\x1b[F".to_vec(),
-        KeyCode::PageUp => b"\x1b[5~".to_vec(),
-        KeyCode::PageDown => b"\x1b[6~".to_vec(),
-        KeyCode::Delete => b"\x1b[3~".to_vec(),
-        KeyCode::Insert => b"\x1b[2~".to_vec(),
+        KeyCode::Home => {
+            if mod_code > 1 {
+                format!("\x1b[1;{}H", mod_code).into_bytes()
+            } else {
+                b"\x1b[H".to_vec()
+            }
+        }
+        KeyCode::End => {
+            if mod_code > 1 {
+                format!("\x1b[1;{}F", mod_code).into_bytes()
+            } else {
+                b"\x1b[F".to_vec()
+            }
+        }
+        KeyCode::PageUp => {
+            if mod_code > 1 {
+                format!("\x1b[5;{}~", mod_code).into_bytes()
+            } else {
+                b"\x1b[5~".to_vec()
+            }
+        }
+        KeyCode::PageDown => {
+            if mod_code > 1 {
+                format!("\x1b[6;{}~", mod_code).into_bytes()
+            } else {
+                b"\x1b[6~".to_vec()
+            }
+        }
+        KeyCode::Delete => {
+            if mod_code > 1 {
+                format!("\x1b[3;{}~", mod_code).into_bytes()
+            } else {
+                b"\x1b[3~".to_vec()
+            }
+        }
+        KeyCode::Insert => {
+            if mod_code > 1 {
+                format!("\x1b[2;{}~", mod_code).into_bytes()
+            } else {
+                b"\x1b[2~".to_vec()
+            }
+        }
         KeyCode::F(n) => match n {
             1 => b"\x1bOP".to_vec(),
             2 => b"\x1bOQ".to_vec(),
