@@ -60,7 +60,14 @@ pub fn lex_command_line(input: &str) -> Vec<CommandToken> {
         return Vec::new();
     }
 
-    let raw_tokens = lex_segment(last_segment);
+    let mut raw_tokens = lex_segment(last_segment);
+    // `& cmd` and `. cmd` invoke `cmd`: the operator is not the command.
+    if raw_tokens.len() > 1
+        && !raw_tokens[0].closed_quote
+        && (raw_tokens[0].text == "&" || raw_tokens[0].text == ".")
+    {
+        raw_tokens.remove(0);
+    }
     if raw_tokens.is_empty() {
         return Vec::new();
     }
@@ -138,6 +145,11 @@ fn split_segments(input: &str) -> Vec<&str> {
                     // && delimiter
                     segments.push(&input[start..byte_pos]);
                     i += 2;
+                    start = if i < len { chars[i].0 } else { input.len() };
+                } else if ch == '(' || ch == '{' {
+                    // A sub-expression or script block starts a new command.
+                    segments.push(&input[start..byte_pos]);
+                    i += 1;
                     start = if i < len { chars[i].0 } else { input.len() };
                 } else {
                     i += 1;
@@ -306,7 +318,7 @@ pub fn active_token_raw(input: &str) -> &str {
         let next = i + c.len_utf8();
         match state {
             DelimQuoteState::Normal => match c {
-                ' ' | '\t' | '\n' | '\r' | '|' | ';' | '&' => start = next,
+                ' ' | '\t' | '\n' | '\r' | '|' | ';' | '&' | '(' | '{' => start = next,
                 '\'' => state = DelimQuoteState::SingleQuote,
                 '"' => state = DelimQuoteState::DoubleQuote,
                 '`' => {

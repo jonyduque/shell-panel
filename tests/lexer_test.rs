@@ -198,3 +198,33 @@ fn test_active_token_raw_stops_at_line_breaks() {
     assert_eq!(active_token_raw("git commit\r\nsr"), "sr");
     assert_eq!(active_token_raw("echo hi\n"), "");
 }
+
+fn texts(input: &str) -> Vec<String> {
+    lex_command_line(input)
+        .into_iter()
+        .map(|t| t.text)
+        .collect()
+}
+
+#[test]
+fn test_command_inside_script_block_or_parentheses() {
+    assert_eq!(texts("if ($x) { git sta"), vec!["git", "sta"]);
+    assert_eq!(texts("$r = (git sta"), vec!["git", "sta"]);
+    assert_eq!(
+        texts("foreach ($f in $files) { docker "),
+        vec!["docker", ""]
+    );
+    // Quoted braces are text.
+    assert_eq!(texts("echo '{ git' sta"), vec!["echo", "{ git", "sta"]);
+}
+
+#[test]
+fn test_call_operators_are_not_the_command() {
+    assert_eq!(texts("& git sta"), vec!["git", "sta"]);
+    assert_eq!(texts(". git sta"), vec!["git", "sta"]);
+    assert_eq!(
+        texts("& 'C:\\Program Files\\Git\\cmd\\git.exe' sta"),
+        vec!["C:\\Program Files\\Git\\cmd\\git.exe", "sta"]
+    );
+    assert_eq!(texts("./build.ps1 -Fa"), vec!["./build.ps1", "-Fa"]);
+}
