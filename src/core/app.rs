@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -26,33 +25,6 @@ use crate::shell::osc::parse_osc_sequence;
 use crate::ui::renderer::{DropdownLayout, Renderer};
 use crate::ui::suggestion_state::SuggestionState;
 use crate::vt::emulator::HeadlessTerminal;
-
-/// Embedded PowerShell shell integration script ensuring single-binary portability.
-pub const SHELL_INTEGRATION_SCRIPT: &str = include_str!("../../assets/shellIntegration.ps1");
-
-/// Resolves or extracts the shell integration script path.
-///
-/// If `assets/shellIntegration.ps1` exists on disk, returns its canonical path.
-/// Otherwise, extracts the embedded script to `%TEMP%\shell-panel\shellIntegration.ps1`.
-pub fn get_shell_integration_path() -> Result<PathBuf> {
-    let local = Path::new("assets/shellIntegration.ps1");
-    if local.is_file() {
-        if let Ok(abs) = local.canonicalize() {
-            let s = abs.to_string_lossy();
-            let clean = s.strip_prefix(r"\\?\").unwrap_or(&s);
-            return Ok(PathBuf::from(clean));
-        }
-    }
-
-    let temp_dir = std::env::temp_dir().join("shell-panel");
-    std::fs::create_dir_all(&temp_dir)?;
-    let temp_path = temp_dir.join("shellIntegration.ps1");
-    let clean_str = temp_path.to_string_lossy();
-    let clean = clean_str.strip_prefix(r"\\?\").unwrap_or(&clean_str);
-    let target = PathBuf::from(clean);
-    std::fs::write(&target, SHELL_INTEGRATION_SCRIPT)?;
-    Ok(target)
-}
 
 /// Builds the default `JsonSpecProvider` pre-populated with git and docker specs.
 pub fn default_json_spec_provider() -> JsonSpecProvider {
@@ -638,13 +610,11 @@ impl App {
     pub async fn run(&mut self) -> Result<u32> {
         let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
         let shell_type = detect_shell(self.override_shell.as_deref());
-        let script_path = get_shell_integration_path()?;
 
         let ConPtySession { pair, child } = ConPtySession::spawn(
             shell_type,
             cols,
             rows,
-            &script_path,
             SpawnOptions {
                 no_profile: self.no_profile,
             },

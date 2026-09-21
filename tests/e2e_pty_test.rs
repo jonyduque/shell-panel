@@ -1,27 +1,18 @@
 use std::io::{Read, Write};
 use std::time::{Duration, Instant};
 
-use shell_panel::core::app::{
-    default_json_spec_provider, get_shell_integration_path, App, SHELL_INTEGRATION_SCRIPT,
-};
+use shell_panel::core::app::{default_json_spec_provider, App};
 use shell_panel::core::config::Config;
 use shell_panel::engine::provider::CompletionProvider;
 use shell_panel::pty::conpty::{ConPtySession, SpawnOptions};
 use shell_panel::pty::shell::detect_shell;
 
 #[test]
-fn test_embedded_script_and_path_resolution() {
-    assert!(!SHELL_INTEGRATION_SCRIPT.is_empty());
-    assert!(SHELL_INTEGRATION_SCRIPT.contains("6973;PS"));
-    assert!(SHELL_INTEGRATION_SCRIPT.contains("6973;PE"));
-    assert!(SHELL_INTEGRATION_SCRIPT.contains("6973;CWD;"));
-
-    let path = get_shell_integration_path().expect("Failed to get shell integration script path");
-    assert!(
-        path.is_file(),
-        "Script path must be a valid file: {:?}",
-        path
-    );
+fn test_embedded_script_defines_the_protocol() {
+    use shell_panel::shell::integration::SCRIPT;
+    for marker in ["6973;", "RS;", "'RE'", "CMP;", "Ctrl+Alt+Shift+F12"] {
+        assert!(SCRIPT.contains(marker), "script lacks {marker}");
+    }
 }
 
 #[tokio::test]
@@ -59,18 +50,9 @@ fn test_app_new_and_config() {
 
 #[test]
 fn test_e2e_pty_powershell_session() {
-    let script_path = get_shell_integration_path().expect("Failed to resolve integration script");
-    assert!(script_path.is_file());
-
     let shell = detect_shell(None);
-    let mut session = ConPtySession::spawn(
-        shell,
-        120,
-        30,
-        &script_path,
-        SpawnOptions { no_profile: true },
-    )
-    .expect("Failed to spawn ConPty session");
+    let mut session = ConPtySession::spawn(shell, 120, 30, SpawnOptions { no_profile: true })
+        .expect("Failed to spawn ConPty session");
 
     let mut reader = session
         .pair

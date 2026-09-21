@@ -28,6 +28,7 @@ impl CommandState {
             OscEvent::Cwd(cwd) => {
                 self.cwd = cwd;
             }
+            OscEvent::ReadLineStarted { .. } | OscEvent::ReadLineEnded | OscEvent::Report(_) => {}
         }
     }
 }

@@ -34,3 +34,19 @@ pub fn calculate_replacement(typed: &str, suggestion: &str) -> ReplacementAction
         }
     }
 }
+
+/// Converts a UTF-16 code-unit index (the unit PowerShell and .NET use) into a byte index into `s`.
+/// Returns `None` when the index is past the end or falls inside a surrogate pair.
+pub fn utf16_to_byte_index(s: &str, utf16_idx: usize) -> Option<usize> {
+    let mut units = 0;
+    for (byte_idx, ch) in s.char_indices() {
+        if units == utf16_idx {
+            return Some(byte_idx);
+        }
+        units += ch.len_utf16();
+        if units > utf16_idx {
+            return None;
+        }
+    }
+    (units == utf16_idx).then_some(s.len())
+}

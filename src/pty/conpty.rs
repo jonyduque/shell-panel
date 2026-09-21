@@ -1,7 +1,6 @@
 use crate::pty::shell::ShellType;
 use anyhow::{Context, Result};
 use portable_pty::{native_pty_system, CommandBuilder, ExitStatus, PtyPair, PtySize};
-use std::path::Path;
 
 pub struct ConPtySession {
     pub pair: PtyPair,
@@ -21,7 +20,6 @@ impl ConPtySession {
         shell_type: ShellType,
         cols: u16,
         rows: u16,
-        script_path: &Path,
         options: SpawnOptions,
     ) -> Result<Self> {
         let pty_system = native_pty_system();
@@ -41,14 +39,9 @@ impl ConPtySession {
         if options.no_profile {
             cmd.arg("-NoProfile");
         }
-        cmd.arg("-ExecutionPolicy");
-        cmd.arg("Bypass");
         cmd.arg("-NoExit");
-        cmd.arg("-Command");
-
-        // Literal PowerShell single quotes escape ($ and ` are preserved without evaluation)
-        let escaped_path = script_path.to_string_lossy().replace('\'', "''");
-        cmd.arg(format!("try {{ . '{}' }} catch {{}}", escaped_path));
+        cmd.arg("-EncodedCommand");
+        cmd.arg(crate::shell::integration::encoded_command());
 
         let child = pair.slave.spawn_command(cmd).with_context(|| {
             format!(

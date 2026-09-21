@@ -9,7 +9,9 @@ use shell_panel::engine::providers::carapace::{
 use shell_panel::engine::providers::files::FileProvider;
 use shell_panel::engine::providers::json_spec::{FigSpec, JsonSpecProvider};
 use shell_panel::engine::providers::zoxide::{parse_zoxide_output, ZoxideProvider};
-use shell_panel::engine::replacement::{calculate_replacement, ReplacementAction};
+use shell_panel::engine::replacement::{
+    calculate_replacement, utf16_to_byte_index, ReplacementAction,
+};
 
 // =========================================================================
 // 1. Replacement Engine Tests
@@ -380,4 +382,14 @@ fn test_zoxide_provider() {
     // Filter with no matches
     let none = parse_zoxide_output(zoxide_output, "nonexistent");
     assert!(none.is_empty());
+}
+
+#[test]
+fn test_utf16_to_byte_index() {
+    assert_eq!(utf16_to_byte_index("", 0), Some(0));
+    assert_eq!(utf16_to_byte_index("ação x", 4), Some(6));
+    assert_eq!(utf16_to_byte_index("ação x", 6), Some(8));
+    assert_eq!(utf16_to_byte_index("🚀a", 1), None); // inside a surrogate pair
+    assert_eq!(utf16_to_byte_index("🚀a", 2), Some(4));
+    assert_eq!(utf16_to_byte_index("ab", 3), None);
 }
