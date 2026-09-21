@@ -3,6 +3,7 @@ mod common;
 use std::time::Duration;
 
 use common::{Terminal, COLS, ROWS};
+use portable_pty::CommandBuilder;
 use shell_panel::pty::conpty::{ConPtySession, SpawnOptions};
 use shell_panel::pty::shell::detect_shell;
 use shell_panel::shell::integration::{base64_encode, encoded_command, SCRIPT};
@@ -24,6 +25,62 @@ fn test_encoded_command_fits_the_windows_command_line() {
         encoded_command().len() < 30_000,
         "CreateProcess limit is 32767 characters"
     );
+}
+
+/// A real shell that runs `prelude` before the integration script, the way a profile would.
+fn shell_with_prelude(prelude: &str) -> Terminal {
+    let script = format!("{prelude}\n{SCRIPT}");
+    let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let mut cmd = CommandBuilder::new(detect_shell(None).executable_name());
+    cmd.arg("-NoLogo");
+    cmd.arg("-NoProfile");
+    cmd.arg("-NoExit");
+    cmd.arg("-EncodedCommand");
+    cmd.arg(base64_encode(&utf16));
+    cmd.env_remove("SHELL_PANEL_SESSION");
+    Terminal::spawn(cmd)
+}
+
+/// Asks the session for both prediction options and checks the view it answers with.
+fn assert_prediction_view(term: &mut Terminal, expected_view: &str) {
+    assert!(
+        term.wait_for_raw(b"\x1b]6973;RS;", Duration::from_secs(40)),
+        "no ReadLine marker"
+    );
+    let option = "(Get-PSReadLineOption)";
+    term.send(
+        format!("\"VIEW=$({option}.PredictionViewStyle) SRC=$({option}.PredictionSource)\"\r")
+            .as_bytes(),
+    );
+    // The question echoes as `$(...)`, so only the answer spells the source out.
+    assert!(
+        term.wait_for_text("SRC=History", Duration::from_secs(20)),
+        "no answer, screen: {}",
+        term.screen()
+    );
+    let expected = format!("VIEW={expected_view} SRC=History");
+    assert!(
+        term.screen().contains(&expected),
+        "expected `{expected}`, screen: {}",
+        term.screen()
+    );
+}
+
+#[test]
+fn test_prediction_list_view_is_switched_off_for_the_session() {
+    // PSReadLine's list view draws over the rows shell-panel's dropdown needs.
+    let mut term = shell_with_prelude(
+        "Set-PSReadLineOption -PredictionSource History -PredictionViewStyle ListView",
+    );
+    assert_prediction_view(&mut term, "InlineView");
+}
+
+#[test]
+fn test_an_inline_prediction_session_is_left_alone() {
+    let mut term = shell_with_prelude(
+        "Set-PSReadLineOption -PredictionSource History -PredictionViewStyle InlineView",
+    );
+    assert_prediction_view(&mut term, "InlineView");
 }
 
 fn last_report(raw: &[u8]) -> Option<OscEvent> {

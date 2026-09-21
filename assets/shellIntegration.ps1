@@ -25,6 +25,15 @@ if (Get-Command PSConsoleHostReadLine -ErrorAction Ignore) {
     }
 }
 
+# PSReadLine's prediction list covers the rows shell-panel draws its dropdown on, so the two
+# collide. Only the list view is in the way: an inline prediction and the prediction source itself
+# are left as the user configured them. Older PSReadLine versions have no such option.
+try {
+    if ((Get-PSReadLineOption).PredictionViewStyle -eq 'ListView') {
+        Set-PSReadLineOption -PredictionViewStyle InlineView
+    }
+} catch {}
+
 # Ctrl+Alt+Shift+F12 (sent by shell-panel when Tab is pressed): report line, cursor and completions.
 try {
     Set-PSReadLineKeyHandler -Chord 'Ctrl+Alt+Shift+F12' -BriefDescription 'ShellPanelReport' -ScriptBlock {
