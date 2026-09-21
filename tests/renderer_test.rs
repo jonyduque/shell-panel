@@ -452,3 +452,28 @@ fn test_render_dropdown_with_custom_theme() {
         "must have description yellow fg"
     );
 }
+
+#[test]
+fn test_restore_line_keeps_colors() {
+    let mut term = HeadlessTerminal::new(80, 24);
+    term.process(b"\x1b[31mRED\x1b[0m plain");
+
+    let restored = restore_line(0, &term);
+
+    assert!(restored.starts_with("\x1b[1;1H"));
+    assert!(restored.contains("31m"), "color lost: {:?}", restored);
+    assert!(restored.contains("RED"));
+    assert!(restored.contains("plain"));
+
+    // Replaying the restore on a blank screen reproduces the colored cell.
+    let mut replay = HeadlessTerminal::new(80, 24);
+    replay.process(restored.as_bytes());
+    assert_eq!(
+        replay.screen().cell(0, 0).unwrap().fgcolor(),
+        vt100::Color::Idx(1)
+    );
+    assert_eq!(
+        replay.screen().cell(0, 4).unwrap().fgcolor(),
+        vt100::Color::Default
+    );
+}

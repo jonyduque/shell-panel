@@ -8,28 +8,17 @@ pub struct LinePatch {
     pub content: String,
 }
 
-/// Reconstructs the terminal's underlying line at `row` and returns an ANSI
-/// sequence that moves to the start of the line, clears it, and writes back the original text.
+/// Returns an ANSI sequence that moves to the start of `row`, clears it and redraws the row
+/// exactly as the headless terminal holds it, colors and attributes included.
 pub fn restore_line(row: u16, term: &HeadlessTerminal) -> String {
-    let screen = term.screen();
-    let mut reconstructed = String::new();
-
-    for col in 0..term.cols {
-        if let Some(cell) = screen.cell(row, col) {
-            if cell.is_wide_continuation() {
-                continue;
-            }
-            let ch = cell.contents();
-            if !ch.is_empty() {
-                reconstructed.push_str(&ch);
-            } else {
-                reconstructed.push(' ');
-            }
-        } else {
-            reconstructed.push(' ');
-        }
-    }
-
-    let reconstructed_text = reconstructed.trim_end();
-    format!("\x1b[{};1H\x1b[2K{}", row + 1, reconstructed_text)
+    let formatted = term
+        .screen()
+        .rows_formatted(0, term.cols)
+        .nth(row as usize)
+        .unwrap_or_default();
+    format!(
+        "\x1b[{};1H\x1b[0m\x1b[2K{}\x1b[0m",
+        row + 1,
+        String::from_utf8_lossy(&formatted)
+    )
 }
