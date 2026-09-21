@@ -38,12 +38,11 @@ async fn test_default_json_spec_provider_git_and_docker() {
 
 #[test]
 fn test_app_new_and_config() {
-    let mut config = Config::new(10, 20);
+    let mut config = Config::new(10);
     config.colors.selected_bg = "blue".to_string();
     config.colors.selected_fg = "white".to_string();
     let app = App::new(config, Some("pwsh".to_string()));
     assert_eq!(app.config.max_suggestions, 10);
-    assert_eq!(app.config.debounce_ms, 20);
     assert_eq!(app.override_shell, Some("pwsh".to_string()));
     assert_eq!(app.theme.selected_start, "\x1b[44m\x1b[37m");
 }

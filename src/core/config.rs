@@ -121,10 +121,6 @@ fn default_max_suggestions() -> usize {
     5
 }
 
-fn default_debounce_ms() -> u64 {
-    30
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Config {
     #[serde(default = "default_max_suggestions")]
@@ -135,8 +131,6 @@ pub struct Config {
     pub colors: ColorConfig,
     #[serde(default)]
     pub icons: IconConfig,
-    #[serde(default = "default_debounce_ms")]
-    pub debounce_ms: u64,
 }
 
 impl Default for Config {
@@ -146,55 +140,114 @@ impl Default for Config {
             shell: None,
             colors: ColorConfig::default(),
             icons: IconConfig::default(),
-            debounce_ms: default_debounce_ms(),
         }
     }
 }
 
 impl Config {
-    pub fn new(max_suggestions: usize, debounce_ms: u64) -> Self {
+    pub fn new(max_suggestions: usize) -> Self {
         Self {
             max_suggestions,
-            debounce_ms,
             ..Default::default()
         }
     }
 
-    pub fn load_or_default(custom_path: Option<&Path>) -> Self {
-        if let Some(path) = custom_path {
-            match std::fs::read_to_string(path) {
-                Ok(content) => match toml::from_str(&content) {
-                    Ok(cfg) => cfg,
-                    Err(err) => {
-                        tracing::warn!("Failed to parse config file at {:?}: {}", path, err);
-                        Self::default()
-                    }
-                },
-                Err(err) => {
-                    tracing::warn!("Failed to read config file at {:?}: {}", path, err);
-                    Self::default()
-                }
+    /// Loads the configuration and returns it with messages for the user. A file that cannot be
+    /// read or parsed yields the defaults; unknown keys are reported and ignored; a missing file
+    /// at the default location is not a problem.
+    pub fn load(custom_path: Option<&Path>) -> (Self, Vec<String>) {
+        let (path, explicit) = match custom_path {
+            Some(p) => (p.to_path_buf(), true),
+            None => match default_config_path() {
+                Some(p) => (p, false),
+                None => return (Self::default(), Vec::new()),
+            },
+        };
+
+        let content = match std::fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(err) if !explicit && err.kind() == std::io::ErrorKind::NotFound => {
+                return (Self::default(), Vec::new())
             }
-        } else {
-            if let Some(path) = default_config_path() {
-                if path.exists() {
-                    if let Ok(content) = std::fs::read_to_string(&path) {
-                        match toml::from_str(&content) {
-                            Ok(cfg) => return cfg,
-                            Err(err) => {
-                                tracing::warn!(
-                                    "Failed to parse default config file at {:?}: {}",
-                                    path,
-                                    err
-                                );
-                            }
-                        }
-                    }
-                }
+            Err(err) => {
+                return (
+                    Self::default(),
+                    vec![format!("could not read config {}: {}", path.display(), err)],
+                )
             }
-            Self::default()
+        };
+
+        match toml::from_str::<Self>(&content) {
+            Ok(config) => {
+                let warnings = content
+                    .parse::<toml::Table>()
+                    .map(|table| unknown_keys(&table))
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|key| format!("unknown key `{}` in {} (ignored)", key, path.display()))
+                    .collect();
+                (config, warnings)
+            }
+            Err(err) => (
+                Self::default(),
+                vec![format!(
+                    "invalid config {}: {}; using defaults",
+                    path.display(),
+                    err
+                )],
+            ),
         }
     }
+
+    /// Like [`Config::load`], discarding the warnings.
+    pub fn load_or_default(custom_path: Option<&Path>) -> Self {
+        Self::load(custom_path).0
+    }
+}
+
+const TOP_LEVEL_KEYS: &[&str] = &["max_suggestions", "shell", "colors", "icons"];
+const COLOR_KEYS: &[&str] = &[
+    "selected_bg",
+    "selected_fg",
+    "unselected_fg",
+    "description_fg",
+    "selected_prefix",
+    "unselected_prefix",
+];
+const ICON_KEYS: &[&str] = &[
+    "directory",
+    "file",
+    "command",
+    "subcommand",
+    "option",
+    "powershell_cmdlet",
+    "alias",
+    "other",
+];
+
+/// Keys serde would silently ignore, as dotted paths.
+fn unknown_keys(table: &toml::Table) -> Vec<String> {
+    let mut unknown = Vec::new();
+    for (key, value) in table {
+        let section_keys = match key.as_str() {
+            "colors" => COLOR_KEYS,
+            "icons" => ICON_KEYS,
+            k if TOP_LEVEL_KEYS.contains(&k) => continue,
+            _ => {
+                unknown.push(key.clone());
+                continue;
+            }
+        };
+        if let toml::Value::Table(section) = value {
+            unknown.extend(
+                section
+                    .keys()
+                    .filter(|k| !section_keys.contains(&k.as_str()))
+                    .map(|k| format!("{key}.{k}")),
+            );
+        }
+    }
+    unknown
 }
 
 pub fn default_config_path() -> Option<PathBuf> {
@@ -208,7 +261,7 @@ pub fn default_sample_toml() -> &'static str {
 # Maximum number of suggestions to display in the dropdown (default: 5)
 max_suggestions = 5
 
-# Override shell executable to launch (e.g. "pwsh", "powershell", "cmd")
+# Shell to launch: "pwsh" or "powershell" (default: pwsh.exe when on PATH, else powershell.exe)
 # shell = "pwsh"
 
 [colors]

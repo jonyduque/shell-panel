@@ -16,6 +16,13 @@ impl ShellType {
     }
 }
 
+/// True for the shell names shell-panel can drive; its integration is PowerShell-only.
+pub fn is_supported_shell(name: &str) -> bool {
+    ["pwsh", "pwsh.exe", "powershell", "powershell.exe"]
+        .iter()
+        .any(|s| s.eq_ignore_ascii_case(name))
+}
+
 /// Detects the PowerShell shell type to use.
 ///
 /// If `override_shell` is provided:

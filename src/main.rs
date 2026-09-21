@@ -4,6 +4,7 @@ use clap::Parser;
 use shell_panel::cli::Cli;
 use shell_panel::core;
 use shell_panel::pty::conpty::SESSION_ENV;
+use shell_panel::pty::shell::is_supported_shell;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Sends `tracing` output to a log file: the terminal is in raw mode and owned by the shell.
@@ -68,8 +69,19 @@ async fn main() -> anyhow::Result<()> {
         default_hook(info);
     }));
 
-    let config = core::config::Config::load_or_default(cli.config.as_deref());
+    let (config, config_warnings) = core::config::Config::load(cli.config.as_deref());
+    for warning in config_warnings {
+        eprintln!("shell-panel: {warning}");
+    }
+
     let shell = cli.shell.or_else(|| config.shell.clone());
+    if let Some(name) = shell.as_deref() {
+        if !is_supported_shell(name) {
+            eprintln!("shell-panel: unsupported shell {name:?}; use \"pwsh\" or \"powershell\"");
+            std::process::exit(2);
+        }
+    }
+
     let mut app = core::app::App::new(config, shell);
     app.no_profile = cli.no_profile;
     let exit_code = app.run().await?;

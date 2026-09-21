@@ -1,5 +1,5 @@
 use shell_panel::core::config::{default_config_path, default_sample_toml, Config};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[test]
 fn test_default_config_path_location() {
@@ -87,4 +87,38 @@ fn test_default_sample_toml_validity() {
         "Sample TOML must parse cleanly: {:?}",
         parsed.err()
     );
+}
+
+fn write_temp(tag: &str, content: &str) -> std::path::PathBuf {
+    let file = std::env::temp_dir().join(format!("sp_cfg_{}_{}.toml", tag, std::process::id()));
+    std::fs::write(&file, content).unwrap();
+    file
+}
+
+#[test]
+fn test_unknown_keys_are_reported_but_the_rest_is_used() {
+    let file = write_temp(
+        "typo",
+        "max_suggestions = 9\ndebounce_ms = 30\n[colors]\nselected_gb = \"red\"\n",
+    );
+    let (config, warnings) = Config::load(Some(&file));
+    let _ = std::fs::remove_file(&file);
+
+    assert_eq!(config.max_suggestions, 9);
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+    assert!(warnings.iter().any(|w| w.contains("debounce_ms")));
+    assert!(warnings.iter().any(|w| w.contains("colors.selected_gb")));
+}
+
+#[test]
+fn test_invalid_or_missing_explicit_file_is_reported() {
+    let file = write_temp("bad", "max_suggestions = \"many\"\n");
+    let (config, warnings) = Config::load(Some(&file));
+    let _ = std::fs::remove_file(&file);
+    assert_eq!(config, Config::default());
+    assert_eq!(warnings.len(), 1);
+
+    let (config, warnings) = Config::load(Some(Path::new("non_existent_config_file_12345.toml")));
+    assert_eq!(config, Config::default());
+    assert_eq!(warnings.len(), 1);
 }

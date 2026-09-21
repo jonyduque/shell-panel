@@ -2,7 +2,7 @@ use std::io::Write;
 use std::time::Duration;
 
 use shell_panel::pty::conpty::{watch_exit, ConPtySession, SpawnOptions};
-use shell_panel::pty::shell::{detect_shell, ShellType};
+use shell_panel::pty::shell::{detect_shell, is_supported_shell, ShellType};
 
 #[test]
 fn test_shell_type_executable_name() {
@@ -23,6 +23,16 @@ fn test_detect_shell_override_pwsh_or_other() {
     assert_eq!(detect_shell(Some("pwsh")), ShellType::Pwsh);
     assert_eq!(detect_shell(Some("pwsh.exe")), ShellType::Pwsh);
     assert_eq!(detect_shell(Some("anything_else")), ShellType::Pwsh);
+}
+
+#[test]
+fn test_is_supported_shell() {
+    for name in ["pwsh", "PWSH.exe", "powershell", "PowerShell.EXE"] {
+        assert!(is_supported_shell(name), "{name}");
+    }
+    for name in ["cmd", "bash", "C:\\tools\\pwsh.exe", ""] {
+        assert!(!is_supported_shell(name), "{name}");
+    }
 }
 
 #[test]
