@@ -1,0 +1,281 @@
+{
+  "name": "docker",
+  "description": "A self-sufficient runtime for containers",
+  "subcommands": [
+    {
+      "name": "run",
+      "description": "Run a command in a new container",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "-d",
+            "--detach"
+          ],
+          "description": "Run container in background and print container ID",
+          "args": null
+        },
+        {
+          "name": [
+            "-p",
+            "--publish"
+          ],
+          "description": "Publish a container's port(s) to the host",
+          "args": null
+        },
+        {
+          "name": [
+            "-v",
+            "--volume"
+          ],
+          "description": "Bind mount a volume",
+          "args": null
+        },
+        {
+          "name": [
+            "-it"
+          ],
+          "description": "Allocate a pseudo-TTY and keep stdin open",
+          "args": null
+        },
+        {
+          "name": [
+            "--name"
+          ],
+          "description": "Assign a name to the container",
+          "args": null
+        },
+        {
+          "name": [
+            "--rm"
+          ],
+          "description": "Automatically remove container when it exits",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "ps",
+      "description": "List containers",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "-a",
+            "--all"
+          ],
+          "description": "Show all containers (default shows just running)",
+          "args": null
+        },
+        {
+          "name": [
+            "-q",
+            "--quiet"
+          ],
+          "description": "Only display container IDs",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "build",
+      "description": "Build an image from a Dockerfile",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "-t",
+            "--tag"
+          ],
+          "description": "Name and optionally tag in 'name:tag' format",
+          "args": null
+        },
+        {
+          "name": [
+            "-f",
+            "--file"
+          ],
+          "description": "Path to the Dockerfile",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "images",
+      "description": "List images",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "-a",
+            "--all"
+          ],
+          "description": "Show all images",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "pull",
+      "description": "Download an image from a registry",
+      "subcommands": [],
+      "options": [],
+      "args": null
+    },
+    {
+      "name": "push",
+      "description": "Upload an image to a registry",
+      "subcommands": [],
+      "options": [],
+      "args": null
+    },
+    {
+      "name": "stop",
+      "description": "Stop one or more running containers",
+      "subcommands": [],
+      "options": [],
+      "args": null
+    },
+    {
+      "name": "start",
+      "description": "Start one or more stopped containers",
+      "subcommands": [],
+      "options": [],
+      "args": null
+    },
+    {
+      "name": "restart",
+      "description": "Restart one or more containers",
+      "subcommands": [],
+      "options": [],
+      "args": null
+    },
+    {
+      "name": "rm",
+      "description": "Remove one or more containers",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "-f",
+            "--force"
+          ],
+          "description": "Force the removal of a running container",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "rmi",
+      "description": "Remove one or more images",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "-f",
+            "--force"
+          ],
+          "description": "Force removal of the image",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "logs",
+      "description": "Fetch the logs of a container",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "-f",
+            "--follow"
+          ],
+          "description": "Follow log output",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "exec",
+      "description": "Run a command in a running container",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "-it"
+          ],
+          "description": "Allocate a pseudo-TTY and keep stdin open",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "compose",
+      "description": "Docker Compose subcommands",
+      "subcommands": [
+        {
+          "name": "up",
+          "description": "Create and start containers",
+          "subcommands": [],
+          "options": [],
+          "args": null
+        },
+        {
+          "name": "down",
+          "description": "Stop and remove containers, networks",
+          "subcommands": [],
+          "options": [],
+          "args": null
+        },
+        {
+          "name": "build",
+          "description": "Build or rebuild services",
+          "subcommands": [],
+          "options": [],
+          "args": null
+        },
+        {
+          "name": "logs",
+          "description": "View output from containers",
+          "subcommands": [],
+          "options": [],
+          "args": null
+        },
+        {
+          "name": "ps",
+          "description": "List containers",
+          "subcommands": [],
+          "options": [],
+          "args": null
+        }
+      ],
+      "options": [],
+      "args": null
+    }
+  ],
+  "options": [
+    {
+      "name": [
+        "-v",
+        "--version"
+      ],
+      "description": "Print version information and quit",
+      "args": null
+    },
+    {
+      "name": [
+        "--help"
+      ],
+      "description": "Print usage",
+      "args": null
+    }
+  ]
+}

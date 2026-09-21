@@ -1,8 +1,20 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use crate::engine::lexer::lex_command_line;
 use crate::engine::provider::{CompletionProvider, Suggestion, SuggestionKind};
+
+const EMBEDDED_SPECS: &[&str] = &[
+    include_str!("../../../assets/specs/git.json"),
+    include_str!("../../../assets/specs/docker.json"),
+];
+
+/// Directory for user Fig specs: `%USERPROFILE%\.config\shell-panel\specs`.
+pub fn default_specs_dir() -> Option<PathBuf> {
+    crate::core::config::default_config_path()
+        .map(|config| config.with_file_name("shell-panel").join("specs"))
+}
 
 /// Represents an option/flag in a Fig-converted JSON spec.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -106,6 +118,46 @@ impl JsonSpecProvider {
     /// Adds a Fig specification to this provider.
     pub fn add_spec(&mut self, spec: FigSpec) {
         self.specs.insert(spec.name.clone(), spec);
+    }
+
+    /// Provider preloaded with the specs embedded in the binary.
+    pub fn with_embedded_specs() -> Self {
+        let mut provider = Self::new();
+        for json in EMBEDDED_SPECS {
+            let spec: FigSpec = serde_json::from_str(json).expect("embedded spec is valid JSON");
+            provider.add_spec(spec);
+        }
+        provider
+    }
+
+    /// Loads every `*.json` Fig spec in `dir`; a user spec replaces an embedded one of the same name.
+    /// Returns one message per file that could not be read or parsed.
+    pub fn load_dir(&mut self, dir: &Path) -> Vec<String> {
+        let mut warnings = Vec::new();
+        let entries = match std::fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(err) => {
+                return vec![format!(
+                    "could not read spec directory {}: {}",
+                    dir.display(),
+                    err
+                )]
+            }
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let parsed = std::fs::read_to_string(&path)
+                .map_err(|e| e.to_string())
+                .and_then(|json| serde_json::from_str::<FigSpec>(&json).map_err(|e| e.to_string()));
+            match parsed {
+                Ok(spec) => self.add_spec(spec),
+                Err(err) => warnings.push(format!("invalid spec {}: {}", path.display(), err)),
+            }
+        }
+        warnings
     }
 }
 

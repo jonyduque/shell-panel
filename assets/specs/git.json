@@ -1,0 +1,306 @@
+{
+  "name": "git",
+  "description": "Fast, scalable, distributed revision control system",
+  "subcommands": [
+    {
+      "name": "status",
+      "description": "Show the working tree status",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "-s",
+            "--short"
+          ],
+          "description": "Give the output in the short-format",
+          "args": null
+        },
+        {
+          "name": [
+            "-b",
+            "--branch"
+          ],
+          "description": "Show the branch and tracking info even in short-format",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "commit",
+      "description": "Record changes to the repository",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "-m",
+            "--message"
+          ],
+          "description": "Use the given msg as the commit message",
+          "args": null
+        },
+        {
+          "name": [
+            "-a",
+            "--all"
+          ],
+          "description": "Automatically stage modified and deleted files",
+          "args": null
+        },
+        {
+          "name": [
+            "--amend"
+          ],
+          "description": "Amend previous commit",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "push",
+      "description": "Update remote refs along with associated objects",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "-u",
+            "--set-upstream"
+          ],
+          "description": "Set upstream for git pull/status",
+          "args": null
+        },
+        {
+          "name": [
+            "-f",
+            "--force"
+          ],
+          "description": "Force updates",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "pull",
+      "description": "Fetch from and integrate with another repository or branch",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "--rebase"
+          ],
+          "description": "Rebase current branch on top of upstream",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "add",
+      "description": "Add file contents to the index",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "-A",
+            "--all"
+          ],
+          "description": "Add all tracked and untracked files",
+          "args": null
+        },
+        {
+          "name": [
+            "-p",
+            "--patch"
+          ],
+          "description": "Interactively choose hunks of patch",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "checkout",
+      "description": "Switch branches or restore working tree files",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "-b"
+          ],
+          "description": "Create and checkout a new branch",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "branch",
+      "description": "List, create, or delete branches",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "-a",
+            "--all"
+          ],
+          "description": "List both remote-tracking and local branches",
+          "args": null
+        },
+        {
+          "name": [
+            "-d",
+            "--delete"
+          ],
+          "description": "Delete a branch",
+          "args": null
+        },
+        {
+          "name": [
+            "-D"
+          ],
+          "description": "Shortcut for --delete --force",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "diff",
+      "description": "Show changes between commits, commit and working tree, etc",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "--staged",
+            "--cached"
+          ],
+          "description": "View changes staged in the index",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "log",
+      "description": "Show commit logs",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "--oneline"
+          ],
+          "description": "Shorthand for --pretty=oneline --abbrev-commit",
+          "args": null
+        },
+        {
+          "name": [
+            "-n"
+          ],
+          "description": "Limit number of commits to output",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "clone",
+      "description": "Clone a repository into a new directory",
+      "subcommands": [],
+      "options": [],
+      "args": null
+    },
+    {
+      "name": "merge",
+      "description": "Join two or more development histories together",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "--no-ff"
+          ],
+          "description": "Create a merge commit even if fast-forward is possible",
+          "args": null
+        },
+        {
+          "name": [
+            "--abort"
+          ],
+          "description": "Abort current conflict resolution process",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "rebase",
+      "description": "Reapply commits on top of another base tip",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "-i",
+            "--interactive"
+          ],
+          "description": "Interactive rebase",
+          "args": null
+        },
+        {
+          "name": [
+            "--continue"
+          ],
+          "description": "Continue rebase after resolving conflict",
+          "args": null
+        },
+        {
+          "name": [
+            "--abort"
+          ],
+          "description": "Abort rebase and reset HEAD",
+          "args": null
+        }
+      ],
+      "args": null
+    },
+    {
+      "name": "reset",
+      "description": "Reset current HEAD to specified state",
+      "subcommands": [],
+      "options": [
+        {
+          "name": [
+            "--hard"
+          ],
+          "description": "Reset index and working tree",
+          "args": null
+        },
+        {
+          "name": [
+            "--soft"
+          ],
+          "description": "Keep changes in index and working tree",
+          "args": null
+        }
+      ],
+      "args": null
+    }
+  ],
+  "options": [
+    {
+      "name": [
+        "-v",
+        "--version"
+      ],
+      "description": "Print git version",
+      "args": null
+    },
+    {
+      "name": [
+        "--help"
+      ],
+      "description": "Display help information",
+      "args": null
+    }
+  ]
+}

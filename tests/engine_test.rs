@@ -418,3 +418,25 @@ fn test_deletion_counts_are_utf16_code_units() {
         "two surrogate pairs need four backspaces"
     );
 }
+
+#[tokio::test]
+async fn test_load_dir_adds_user_specs_and_reports_bad_files() {
+    let dir = std::env::temp_dir().join(format!("sp_specs_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("mytool.json"),
+        r#"{"name":"mytool","subcommands":[{"name":"deploy","description":"Ship it"}]}"#,
+    )
+    .unwrap();
+    std::fs::write(dir.join("broken.json"), "{").unwrap();
+    std::fs::write(dir.join("notes.txt"), "ignored").unwrap();
+
+    let mut provider = JsonSpecProvider::with_embedded_specs();
+    let warnings = provider.load_dir(&dir);
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(warnings.len(), 1, "{:?}", warnings);
+    assert!(warnings[0].contains("broken.json"));
+    let sugs = provider.complete("mytool dep", "").await;
+    assert_eq!(sugs[0].name, "deploy");
+}

@@ -1,9 +1,10 @@
 use std::io::{Read, Write};
 use std::time::{Duration, Instant};
 
-use shell_panel::core::app::{default_json_spec_provider, App};
+use shell_panel::core::app::App;
 use shell_panel::core::config::Config;
 use shell_panel::engine::provider::CompletionProvider;
+use shell_panel::engine::providers::json_spec::JsonSpecProvider;
 use shell_panel::pty::conpty::{ConPtySession, SpawnOptions};
 use shell_panel::pty::shell::detect_shell;
 
@@ -17,7 +18,7 @@ fn test_embedded_script_defines_the_protocol() {
 
 #[tokio::test]
 async fn test_default_json_spec_provider_git_and_docker() {
-    let provider = default_json_spec_provider();
+    let provider = JsonSpecProvider::with_embedded_specs();
     assert_eq!(provider.name(), "json_spec");
     assert!(provider.can_handle("git"));
     assert!(provider.can_handle("docker"));
