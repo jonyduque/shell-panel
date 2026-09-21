@@ -294,3 +294,41 @@ fn lex_segment(segment: &str) -> Vec<RawToken> {
 
     tokens
 }
+
+/// Returns the raw source text (quotes and backtick escapes included) of the token that ends
+/// `input`, i.e. exactly what has to be erased to replace it at the prompt.
+pub fn active_token_raw(input: &str) -> &str {
+    let mut start = 0;
+    let mut state = DelimQuoteState::Normal;
+    let mut chars = input.char_indices();
+
+    while let Some((i, c)) = chars.next() {
+        let next = i + c.len_utf8();
+        match state {
+            DelimQuoteState::Normal => match c {
+                ' ' | '\t' | '|' | ';' | '&' => start = next,
+                '\'' => state = DelimQuoteState::SingleQuote,
+                '"' => state = DelimQuoteState::DoubleQuote,
+                '`' => {
+                    chars.next();
+                }
+                '=' if input[start..i].starts_with('-') => start = next,
+                _ => {}
+            },
+            DelimQuoteState::SingleQuote => {
+                if c == '\'' {
+                    state = DelimQuoteState::Normal;
+                }
+            }
+            DelimQuoteState::DoubleQuote => match c {
+                '`' => {
+                    chars.next();
+                }
+                '"' => state = DelimQuoteState::Normal,
+                _ => {}
+            },
+        }
+    }
+
+    &input[start..]
+}

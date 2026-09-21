@@ -8,9 +8,11 @@ use shell_panel::engine::providers::carapace::{
 };
 use shell_panel::engine::providers::files::FileProvider;
 use shell_panel::engine::providers::json_spec::{FigSpec, JsonSpecProvider};
-use shell_panel::engine::providers::zoxide::{parse_zoxide_output, ZoxideProvider};
+use shell_panel::engine::providers::zoxide::{
+    parse_zoxide_output, quote_for_powershell, ZoxideProvider,
+};
 use shell_panel::engine::replacement::{
-    calculate_replacement, utf16_to_byte_index, ReplacementAction,
+    calculate_replacement, replace_range, utf16_to_byte_index, ReplacementAction,
 };
 
 // =========================================================================
@@ -25,6 +27,7 @@ fn test_calculate_replacement_exact_prefix() {
         action,
         ReplacementAction {
             backspace_count: 0,
+            delete_count: 0,
             insert_text: "tus ".to_string(),
         }
     );
@@ -35,6 +38,7 @@ fn test_calculate_replacement_exact_prefix() {
         action_empty,
         ReplacementAction {
             backspace_count: 0,
+            delete_count: 0,
             insert_text: "status ".to_string(),
         }
     );
@@ -45,6 +49,7 @@ fn test_calculate_replacement_exact_prefix() {
         action_full,
         ReplacementAction {
             backspace_count: 0,
+            delete_count: 0,
             insert_text: " ".to_string(),
         }
     );
@@ -57,6 +62,7 @@ fn test_calculate_replacement_case_mismatch() {
         action,
         ReplacementAction {
             backspace_count: 3,
+            delete_count: 0,
             insert_text: "status ".to_string(),
         }
     );
@@ -66,6 +72,7 @@ fn test_calculate_replacement_case_mismatch() {
         action2,
         ReplacementAction {
             backspace_count: 3,
+            delete_count: 0,
             insert_text: "Git ".to_string(),
         }
     );
@@ -79,6 +86,7 @@ fn test_calculate_replacement_fuzzy_and_unicode() {
         action_fuzzy,
         ReplacementAction {
             backspace_count: 3,
+            delete_count: 0,
             insert_text: "status ".to_string(),
         }
     );
@@ -89,6 +97,7 @@ fn test_calculate_replacement_fuzzy_and_unicode() {
         action_emoji,
         ReplacementAction {
             backspace_count: 0,
+            delete_count: 0,
             insert_text: "st ".to_string(),
         }
     );
@@ -100,6 +109,7 @@ fn test_calculate_replacement_fuzzy_and_unicode() {
         action_emoji_case,
         ReplacementAction {
             backspace_count: 3,
+            delete_count: 0,
             insert_text: "🚀test ".to_string(),
         }
     );
@@ -111,6 +121,7 @@ fn test_calculate_replacement_fuzzy_and_unicode() {
         action_cjk,
         ReplacementAction {
             backspace_count: 0,
+            delete_count: 0,
             insert_text: "世界 ".to_string(),
         }
     );
@@ -120,6 +131,7 @@ fn test_calculate_replacement_fuzzy_and_unicode() {
         action_cjk_replace,
         ReplacementAction {
             backspace_count: 2,
+            delete_count: 0,
             insert_text: "こんにちは ".to_string(),
         }
     );
@@ -392,4 +404,60 @@ fn test_utf16_to_byte_index() {
     assert_eq!(utf16_to_byte_index("🚀a", 1), None); // inside a surrogate pair
     assert_eq!(utf16_to_byte_index("🚀a", 2), Some(4));
     assert_eq!(utf16_to_byte_index("ab", 3), None);
+}
+
+#[test]
+fn test_replacement_bytes_and_forward_delete() {
+    // Cursor inside `Get-Child|Item`, suggestion `Get-ChildItem`.
+    let action = replace_range("Get-Child", "Item", "Get-ChildItem");
+    assert_eq!(
+        action,
+        ReplacementAction {
+            backspace_count: 9,
+            delete_count: 4,
+            insert_text: "Get-ChildItem ".into()
+        }
+    );
+    let mut expected = vec![0x7f; 9];
+    for _ in 0..4 {
+        expected.extend_from_slice(b"\x1b[3~");
+    }
+    expected.extend_from_slice(b"Get-ChildItem ");
+    assert_eq!(action.to_bytes(), expected);
+
+    // Nothing after the cursor: same as the prefix logic (only the suffix is typed).
+    assert_eq!(
+        replace_range("System.IO.Fi", "", "System.IO.File"),
+        ReplacementAction {
+            backspace_count: 0,
+            delete_count: 0,
+            insert_text: "le ".into()
+        }
+    );
+}
+
+#[test]
+fn test_no_trailing_space_after_quoted_directory() {
+    assert_eq!(
+        calculate_replacement("'My", r"'.\My Documents\'").insert_text,
+        r"'.\My Documents\'"
+    );
+    assert_eq!(
+        calculate_replacement("a", "'a b.txt'").insert_text,
+        "'a b.txt' "
+    );
+}
+
+#[test]
+fn test_zoxide_paths_are_quoted_for_powershell() {
+    assert_eq!(quote_for_powershell(r"C:\src"), r"C:\src");
+    assert_eq!(
+        quote_for_powershell(r"C:\My Documents"),
+        r"'C:\My Documents'"
+    );
+    assert_eq!(quote_for_powershell(r"C:\it's"), r"'C:\it''s'");
+
+    let sugs = parse_zoxide_output("C:\\My Documents\n", "my");
+    assert_eq!(sugs[0].name, r"'C:\My Documents'");
+    assert_eq!(sugs[0].display, r"C:\My Documents");
 }

@@ -32,6 +32,18 @@ impl ZoxideProvider {
     }
 }
 
+/// Wraps `path` in single quotes when PowerShell would otherwise split or interpret it.
+pub fn quote_for_powershell(path: &str) -> String {
+    let needs_quotes = path
+        .chars()
+        .any(|c| c.is_whitespace() || "'\"`$(){};,&@#|<>".contains(c));
+    if needs_quotes {
+        format!("'{}'", path.replace('\'', "''"))
+    } else {
+        path.to_string()
+    }
+}
+
 /// Parses newline-delimited directory paths from `zoxide query -l`, filtering by prefix.
 pub fn parse_zoxide_output(output: &str, prefix: &str) -> Vec<Suggestion> {
     let prefix_clean = prefix.trim();
@@ -62,8 +74,13 @@ pub fn parse_zoxide_output(output: &str, prefix: &str) -> Vec<Suggestion> {
 
         if matches {
             suggestions.push(
-                Suggestion::new(trimmed, trimmed, Some("Zoxide Directory".into()), 70)
-                    .with_kind(SuggestionKind::Directory),
+                Suggestion::new(
+                    quote_for_powershell(trimmed),
+                    trimmed,
+                    Some("Zoxide Directory".into()),
+                    70,
+                )
+                .with_kind(SuggestionKind::Directory),
             );
         }
     }

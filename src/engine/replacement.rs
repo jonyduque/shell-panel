@@ -1,37 +1,64 @@
-/// Action specifying how to replace the current typed token with the chosen suggestion.
+/// Keys that turn the text around the cursor into the chosen suggestion.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReplacementAction {
-    /// Number of backspaces to send to erase the current typed input.
+    /// Backspaces to erase text before the cursor.
     pub backspace_count: usize,
-    /// Text to insert into the terminal, including any trailing space.
+    /// Forward deletes to erase text after the cursor.
+    pub delete_count: usize,
+    /// Text to type, including any trailing space.
     pub insert_text: String,
 }
 
-/// Computes the terminal key sequence needed to transform `typed` into `suggestion` (with a trailing space).
-///
-/// Handles:
-/// 1. Exact prefix match: zero backspaces, inserts only the remaining suffix + " ".
-/// 2. Case mismatch prefix: backspaces the entire typed token and inserts the full suggestion + " ".
-/// 3. Non-prefix (fuzzy/full replacement): backspaces the entire typed token and inserts full suggestion + " ".
-///
-/// Uses character count rather than byte count for safe Unicode (CJK/emojis) backspacing.
-pub fn calculate_replacement(typed: &str, suggestion: &str) -> ReplacementAction {
-    let trailing_space = if suggestion.ends_with('/') || suggestion.ends_with('\\') {
+impl ReplacementAction {
+    /// The byte sequence to write to the PTY.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = vec![0x7f; self.backspace_count];
+        for _ in 0..self.delete_count {
+            bytes.extend_from_slice(b"\x1b[3~");
+        }
+        bytes.extend_from_slice(self.insert_text.as_bytes());
+        bytes
+    }
+}
+
+/// Directories (also when quoted) keep the cursor right behind them so the path can continue.
+fn trailing_space(suggestion: &str) -> &'static str {
+    let unquoted = suggestion.trim_end_matches(['\'', '"']);
+    if unquoted.ends_with('/') || unquoted.ends_with('\\') {
         ""
     } else {
         " "
-    };
+    }
+}
 
+/// Replaces `typed` (the text right before the cursor) with `suggestion`.
+/// When `suggestion` extends `typed` only the missing suffix is typed.
+pub fn calculate_replacement(typed: &str, suggestion: &str) -> ReplacementAction {
+    let space = trailing_space(suggestion);
     if suggestion.starts_with(typed) {
         ReplacementAction {
             backspace_count: 0,
-            insert_text: format!("{}{}", &suggestion[typed.len()..], trailing_space),
+            delete_count: 0,
+            insert_text: format!("{}{}", &suggestion[typed.len()..], space),
         }
     } else {
         ReplacementAction {
             backspace_count: typed.chars().count(),
-            insert_text: format!("{}{}", suggestion, trailing_space),
+            delete_count: 0,
+            insert_text: format!("{}{}", suggestion, space),
         }
+    }
+}
+
+/// Replaces `before` + `after` (the text on both sides of the cursor) with `suggestion`.
+pub fn replace_range(before: &str, after: &str, suggestion: &str) -> ReplacementAction {
+    if after.is_empty() {
+        return calculate_replacement(before, suggestion);
+    }
+    ReplacementAction {
+        backspace_count: before.chars().count(),
+        delete_count: after.chars().count(),
+        insert_text: format!("{}{}", suggestion, trailing_space(suggestion)),
     }
 }
 

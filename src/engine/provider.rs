@@ -43,6 +43,10 @@ pub struct Suggestion {
     pub priority: u32,
     /// The category/kind of suggestion (e.g. file, directory, subcommand).
     pub kind: SuggestionKind,
+    /// True when the suggestion comes from PowerShell's own completion: it then replaces the
+    /// range PowerShell reported instead of the token found by our lexer.
+    #[serde(default)]
+    pub uses_shell_range: bool,
 }
 
 impl Suggestion {
@@ -59,12 +63,19 @@ impl Suggestion {
             description,
             priority,
             kind: SuggestionKind::Other,
+            uses_shell_range: false,
         }
     }
 
     /// Builder method to specify the `SuggestionKind`.
     pub fn with_kind(mut self, kind: SuggestionKind) -> Self {
         self.kind = kind;
+        self
+    }
+
+    /// Marks the suggestion as replacing PowerShell's reported range.
+    pub fn with_shell_range(mut self) -> Self {
+        self.uses_shell_range = true;
         self
     }
 }

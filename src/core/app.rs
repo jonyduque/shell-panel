@@ -7,8 +7,9 @@ use futures_util::StreamExt;
 use portable_pty::PtySize;
 
 use crate::core::config::Config;
+use crate::engine::aggregate::should_include_files;
 use crate::engine::lexer::lex_command_line;
-use crate::engine::provider::{CompletionProvider, Suggestion, SuggestionKind};
+use crate::engine::provider::CompletionProvider;
 use crate::engine::providers::carapace::CarapaceProvider;
 use crate::engine::providers::files::FileProvider;
 use crate::engine::providers::json_spec::{FigOption, FigSpec, FigSubcommand, JsonSpecProvider};
@@ -564,31 +565,6 @@ fn scan_and_handle_osc(
     clean_output
 }
 
-/// Determines whether file suggestions should be included alongside existing provider suggestions.
-///
-/// If subcommands, commands, PowerShell cmdlets, or options were already found,
-/// file completions are only included if the active token contains `/`, `\`, or starts with `.`.
-pub fn should_include_files<'a>(
-    active_token: &str,
-    existing: impl IntoIterator<Item = &'a Suggestion>,
-) -> bool {
-    let has_gating_suggestion = existing.into_iter().any(|s| {
-        matches!(
-            s.kind,
-            SuggestionKind::Subcommand
-                | SuggestionKind::Command
-                | SuggestionKind::PowerShellCmdlet
-                | SuggestionKind::Option
-        )
-    });
-
-    if !has_gating_suggestion {
-        return true;
-    }
-
-    active_token.contains('/') || active_token.contains('\\') || active_token.starts_with('.')
-}
-
 pub struct App {
     pub config: Config,
     pub theme: crate::ui::theme::Theme,
@@ -789,13 +765,7 @@ impl App {
                                             let tokens = lex_command_line(&command_state.command_text);
                                             let active_token_text = tokens.last().map(|t| t.text.as_str()).unwrap_or("");
                                             let replacement = calculate_replacement(active_token_text, &selected_name);
-
-                                            let mut write_buf = Vec::new();
-                                            for _ in 0..replacement.backspace_count {
-                                                write_buf.push(0x7f);
-                                            }
-                                            write_buf.extend_from_slice(replacement.insert_text.as_bytes());
-                                            let _ = pty_writer.write_all(&write_buf);
+                                            let _ = pty_writer.write_all(&replacement.to_bytes());
                                             let _ = pty_writer.flush();
                                         }
                                     } else {
@@ -864,12 +834,7 @@ impl App {
                                                 let _ = pty_writer.flush();
                                             } else if results.len() == 1 {
                                                 let replacement = calculate_replacement(active_token_text, &results[0].name);
-                                                let mut write_buf = Vec::new();
-                                                for _ in 0..replacement.backspace_count {
-                                                    write_buf.push(0x7f);
-                                                }
-                                                write_buf.extend_from_slice(replacement.insert_text.as_bytes());
-                                                let _ = pty_writer.write_all(&write_buf);
+                                                let _ = pty_writer.write_all(&replacement.to_bytes());
                                                 let _ = pty_writer.flush();
                                             } else {
                                                 suggestion_state.set_suggestions(results);

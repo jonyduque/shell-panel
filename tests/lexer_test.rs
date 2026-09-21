@@ -1,4 +1,4 @@
-use shell_panel::engine::lexer::{lex_command_line, CommandToken};
+use shell_panel::engine::lexer::{active_token_raw, lex_command_line, CommandToken};
 
 #[test]
 fn test_lex_command_line_basic() {
@@ -177,4 +177,15 @@ fn test_lex_command_line_unicode_width() {
     assert_eq!(tokens[1].width, 4); // CJK characters width = 2 each
     assert_eq!(tokens[2].text, "🚀");
     assert_eq!(tokens[2].width, 2); // Emoji width = 2
+}
+
+#[test]
+fn test_active_token_raw_keeps_quotes_and_escapes() {
+    assert_eq!(active_token_raw("git sta"), "sta");
+    assert_eq!(active_token_raw("cd 'My Do"), "'My Do");
+    assert_eq!(active_token_raw("git commit -m \"hello wor"), "\"hello wor");
+    assert_eq!(active_token_raw("ls "), "");
+    assert_eq!(active_token_raw("a | b"), "b");
+    assert_eq!(active_token_raw("cmd --name=va"), "va");
+    assert_eq!(active_token_raw("echo a` b"), "a` b");
 }
