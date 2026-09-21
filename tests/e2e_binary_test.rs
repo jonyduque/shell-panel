@@ -144,6 +144,51 @@ fn test_completion_uses_the_real_line_and_the_real_session() {
 }
 
 #[test]
+fn test_enter_accepts_the_highlighted_suggestion_without_running_the_line() {
+    let dir = temp_dir("enter");
+    let mut term = Terminal::shell_panel(&dir);
+    assert!(term.wait_for_text("PS ", START));
+
+    term.send(b"git ");
+    assert!(
+        term.wait_for_text("> git", STEP),
+        "screen: {}",
+        term.screen()
+    );
+    term.send(b"\t");
+    assert!(
+        term.wait_for_text("Record changes to the repository", STEP),
+        "screen: {}",
+        term.screen()
+    );
+
+    term.send(b"\r");
+    assert!(
+        term.wait_until(STEP, |t| !t
+            .screen()
+            .contains("Record changes to the repository")),
+        "dropdown still open: {}",
+        term.screen()
+    );
+
+    // The Enter was consumed, so the accepted suggestion is still an editable line: what is typed
+    // next lands on it. Had the line run, `git` would be above a fresh prompt instead.
+    term.send(b"zzmark");
+    assert!(
+        term.wait_until(STEP, |t| t
+            .screen()
+            .lines()
+            .any(|l| l.contains("git") && l.contains("zzmark"))),
+        "line was executed: {}",
+        term.screen()
+    );
+
+    term.send(b"\x1b");
+    term.send(b"exit\r");
+    assert_eq!(term.wait_exit(STEP), Some(0));
+}
+
+#[test]
 fn test_tab_outside_psreadline_is_a_plain_tab() {
     let dir = temp_dir("readhost");
     let mut term = Terminal::shell_panel(&dir);

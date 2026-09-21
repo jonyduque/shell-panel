@@ -63,10 +63,31 @@ fn test_classify_ctrl_and_alt_are_passthrough() {
 }
 
 #[test]
-fn test_classify_standard_keys_are_passthrough() {
+fn test_classify_enter_accepts_but_only_unmodified() {
+    // With the dropdown open Enter takes the highlighted suggestion, like Tab.
     let enter = make_key_event(KeyCode::Enter, KeyModifiers::NONE, KeyEventKind::Press);
-    assert_eq!(classify_key(&enter), ActionKey::Passthrough);
+    assert_eq!(classify_key(&enter), ActionKey::AcceptSuggestion);
 
+    // Shift+Enter and Ctrl+Enter keep their own meaning and their own encoding.
+    for (modifiers, bytes) in [
+        (KeyModifiers::SHIFT, b"\x1b[13;28;13;1;16;1_".as_slice()),
+        (KeyModifiers::CONTROL, b"\x1b[13;28;13;1;8;1_".as_slice()),
+    ] {
+        let modified = make_key_event(KeyCode::Enter, modifiers, KeyEventKind::Press);
+        assert_eq!(classify_key(&modified), ActionKey::Passthrough);
+        assert_eq!(encode_key_event(&modified), bytes);
+    }
+
+    // An accepted Enter is consumed, but with no dropdown open it is still a plain carriage return.
+    assert_eq!(encode_key_event(&enter), b"\r");
+
+    // A release event is never an accept, or one Enter would accept twice.
+    let release = make_key_event(KeyCode::Enter, KeyModifiers::NONE, KeyEventKind::Release);
+    assert_eq!(classify_key(&release), ActionKey::Passthrough);
+}
+
+#[test]
+fn test_classify_standard_keys_are_passthrough() {
     let backspace = make_key_event(KeyCode::Backspace, KeyModifiers::NONE, KeyEventKind::Press);
     assert_eq!(classify_key(&backspace), ActionKey::Passthrough);
 

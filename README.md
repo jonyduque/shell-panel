@@ -54,6 +54,8 @@ The shell starts in the directory you start shell-panel from. Starting shell-pan
 | Key | Dropdown closed | Dropdown open |
 |-----|-----------------|---------------|
 | Tab | Complete: one match is inserted directly, several open the dropdown, none falls back to PowerShell's Tab | Insert the highlighted suggestion |
+| Enter | Passed to PowerShell (runs the line) | Insert the highlighted suggestion; the line is not run |
+| Shift+Enter, Ctrl+Enter | Passed to PowerShell | Passed to PowerShell |
 | Down / Up, Shift+Tab | Passed to PowerShell | Move the highlight (wraps around) |
 | Esc | Passed to PowerShell | Close the dropdown |
 | Any other key | Passed to PowerShell | Close the dropdown and pass the key on |

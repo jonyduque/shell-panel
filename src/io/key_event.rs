@@ -26,6 +26,11 @@ pub fn classify_key(event: &KeyEvent) -> ActionKey {
         KeyCode::Up => ActionKey::MenuUp,
         KeyCode::Down => ActionKey::MenuDown,
         KeyCode::Tab => ActionKey::AcceptSuggestion,
+        // Only an unmodified Enter accepts: Shift+Enter continues the line and keeps its encoding.
+        // With no dropdown open only Tab requests a report, so a plain Enter still reaches the shell.
+        KeyCode::Enter if !event.modifiers.contains(KeyModifiers::SHIFT) => {
+            ActionKey::AcceptSuggestion
+        }
         KeyCode::BackTab => ActionKey::MenuUp, // Shift+Tab cycles backwards
         KeyCode::Esc => ActionKey::DismissMenu,
         _ => ActionKey::Passthrough,
