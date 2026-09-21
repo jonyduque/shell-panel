@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use shell_panel::io::filter::sanitize_output_stream;
-use shell_panel::io::key_event::{classify_key, encode_key_event, ActionKey};
+use shell_panel::io::key_event::{classify_key, encode_key_event, withheld_tab_bytes, ActionKey};
 use shell_panel::io::raw_mode::RawModeGuard;
 
 fn make_key_event(code: KeyCode, modifiers: KeyModifiers, kind: KeyEventKind) -> KeyEvent {
@@ -72,6 +72,20 @@ fn test_classify_standard_keys_are_passthrough() {
 
     let ch = make_key_event(KeyCode::Char('a'), KeyModifiers::NONE, KeyEventKind::Press);
     assert_eq!(classify_key(&ch), ActionKey::Passthrough);
+}
+
+#[test]
+fn test_withheld_tab_is_replayed_before_the_next_key() {
+    // Nothing outstanding: the key goes to the shell on its own.
+    assert_eq!(withheld_tab_bytes(false, KeyCode::Char('-')), b"");
+
+    // `git sta<Tab> -s`: the Tab was answered with a chord, so the `\t` must precede the `-`.
+    assert_eq!(withheld_tab_bytes(true, KeyCode::Char('-')), b"\t");
+    assert_eq!(withheld_tab_bytes(true, KeyCode::Enter), b"\t");
+    assert_eq!(withheld_tab_bytes(true, KeyCode::Backspace), b"\t");
+
+    // Another Tab starts a request of its own instead of replaying the first one.
+    assert_eq!(withheld_tab_bytes(true, KeyCode::Tab), b"");
 }
 
 #[test]

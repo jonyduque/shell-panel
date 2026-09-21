@@ -124,6 +124,7 @@ Most tests are pure. The PTY and end-to-end tests start real PowerShell sessions
 - PowerShell's completions are computed on the shell's thread, like native Tab: a slow completer delays the dropdown (after 3 seconds Tab falls back to PowerShell).
 - The report travels through the terminal stream as an OSC sequence. Shell messages longer than 1 MiB, or containing raw control bytes, are treated as ordinary output. This is verified on Windows 11; very old Windows 10 console hosts may truncate long sequences.
 - A Tab character inside pasted text triggers completion instead of being inserted.
+- The child shell inherits `SHELL_PANEL_SESSION=1`, so shell-panel refuses to start in a new window opened from inside a session (for example with `Start-Process`) until that variable is removed: `$env:SHELL_PANEL_SESSION = $null`.
 
 ## License
 

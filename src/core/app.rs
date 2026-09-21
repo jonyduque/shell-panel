@@ -11,7 +11,7 @@ use crate::core::config::Config;
 use crate::engine::aggregate::{plan_replacement, CompletionEngine};
 use crate::engine::provider::Suggestion;
 use crate::engine::providers::json_spec::{default_specs_dir, JsonSpecProvider};
-use crate::io::key_event::{classify_key, encode_key_event, ActionKey};
+use crate::io::key_event::{classify_key, encode_key_event, withheld_tab_bytes, ActionKey};
 use crate::io::raw_mode::RawModeGuard;
 use crate::pty::conpty::{watch_exit, ConPtySession, SpawnOptions};
 use crate::pty::shell::detect_shell;
@@ -49,6 +49,11 @@ impl Dropdown {
     }
 
     fn draw<W: Write>(&mut self, term: &HeadlessTerminal, theme: &Theme, out: &mut W) {
+        // Restore the rows the previous layout covered first: paging can land on a shorter page
+        // or move the panel above the cursor, and those rows would keep stale suggestions.
+        if let Some(layout) = self.layout.take() {
+            let _ = Renderer::clear_dropdown(&layout, term, out);
+        }
         let (cx, cy) = term.cursor_position();
         self.layout = Renderer::render_dropdown(&self.state, term, theme, cx, cy, out)
             .ok()
@@ -162,6 +167,9 @@ impl App {
         let mut generation: u64 = 0;
         // Deadline of the report requested by the last Tab, while it is outstanding.
         let mut report_deadline: Option<Instant> = None;
+        // Set while a Tab is waiting for its completion: the `\t` was withheld in favour of the
+        // report request and still owes the shell a Tab if the completion never lands.
+        let mut tab_pending = false;
         let mut exit_code: Option<u32> = None;
         let mut input_open = true;
 
@@ -174,10 +182,13 @@ impl App {
                     dropdown.close(&term, &mut stdout);
                     // The shell's last output may still be in flight: drain until the PTY is quiet.
                     let drain_until = Instant::now() + Duration::from_secs(1);
-                    while let Ok(Some(chunk)) = tokio::time::timeout_at(
-                        drain_until.min(Instant::now() + Duration::from_millis(100)),
-                        pty_rx.recv(),
-                    ).await {
+                    // An orphaned child can keep the PTY busy: the deadline ends the loop even
+                    // when every poll of `recv` returns a chunk before it expires.
+                    while Instant::now() < drain_until {
+                        let Ok(Some(chunk)) = tokio::time::timeout_at(
+                            drain_until.min(Instant::now() + Duration::from_millis(100)),
+                            pty_rx.recv(),
+                        ).await else { break };
                         let clean = ingest_pty_chunk(&chunk, &mut term, &mut command_state, &mut osc_residual);
                         let _ = stdout.write_all(&clean);
                     }
@@ -217,6 +228,8 @@ impl App {
                         continue;
                     }
                     debug!(merged = outcome.results.len(), "completion results merged");
+                    // The Tab is answered here, whichever branch applies.
+                    tab_pending = false;
                     match outcome.results.as_slice() {
                         [] => write_to_pty(&mut pty_writer, b"\t"),
                         [only] => write_to_pty(&mut pty_writer, &plan_replacement(&outcome.report, only).to_bytes()),
@@ -228,6 +241,7 @@ impl App {
                     // No report: the chord was not bound or PowerShell is busy. Plain Tab.
                     debug!("shell report timed out");
                     report_deadline = None;
+                    tab_pending = false;
                     write_to_pty(&mut pty_writer, b"\t");
                 }
 
@@ -251,6 +265,9 @@ impl App {
                         Event::Key(key_event) if key_event.kind != KeyEventKind::Release => {
                             generation += 1;
                             report_deadline = None;
+                            // This key invalidates the outstanding report, so hand the shell the
+                            // Tab it never got before the key that follows it.
+                            write_to_pty(&mut pty_writer, withheld_tab_bytes(tab_pending, key_event.code));
                             self.handle_key(
                                 &key_event,
                                 &mut dropdown,
@@ -260,6 +277,8 @@ impl App {
                                 &mut stdout,
                                 &mut report_deadline,
                             );
+                            // `handle_key` sets the deadline exactly when it requested a report.
+                            tab_pending = report_deadline.is_some();
                         }
                         _ => {}
                     }
@@ -331,6 +350,85 @@ impl App {
             *report_deadline = Some(Instant::now() + REPORT_TIMEOUT);
         } else {
             write_to_pty(pty_writer, &encode_key_event(key_event));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A screen with `base<row>` on every row and the cursor back on row 0.
+    fn base_screen() -> (HeadlessTerminal, Vec<u8>) {
+        let mut bytes = Vec::new();
+        for row in 0..24u16 {
+            bytes.extend_from_slice(format!("\x1b[{};1Hbase{row}", row + 1).as_bytes());
+        }
+        bytes.extend_from_slice(b"\x1b[1;1H");
+        let mut term = HeadlessTerminal::new(80, 24);
+        term.process(&bytes);
+        (term, bytes)
+    }
+
+    fn row_text(term: &HeadlessTerminal, row: u16) -> String {
+        (0..term.cols)
+            .filter_map(|col| term.screen().cell(row, col))
+            .map(|cell| cell.contents())
+            .collect()
+    }
+
+    #[test]
+    fn test_draw_restores_the_previous_layout_before_paging() {
+        let (term, base) = base_screen();
+        let theme = Theme::default();
+        let mut dropdown = Dropdown {
+            state: SuggestionState::new(5),
+            layout: None,
+            report: None,
+        };
+        // 13 items over pages of 5: the last page has only 3.
+        dropdown.state.set_suggestions(
+            (0..13)
+                .map(|i| Suggestion::new(format!("item{i}"), format!("item{i}"), None, 50))
+                .collect(),
+        );
+
+        let mut first = Vec::new();
+        dropdown.draw(&term, &theme, &mut first);
+        assert_eq!(
+            dropdown.layout,
+            Some(DropdownLayout {
+                start_row: 1,
+                row_count: 5
+            })
+        );
+
+        for _ in 0..10 {
+            dropdown.state.move_down();
+        }
+        let mut second = Vec::new();
+        dropdown.draw(&term, &theme, &mut second);
+        assert_eq!(
+            dropdown.layout,
+            Some(DropdownLayout {
+                start_row: 1,
+                row_count: 3
+            })
+        );
+
+        // Replay both frames on the screen they were written to.
+        let mut screen = HeadlessTerminal::new(80, 24);
+        screen.process(&base);
+        screen.process(&first);
+        screen.process(&second);
+
+        assert!(row_text(&screen, 1).contains("item10"));
+        for row in [4u16, 5] {
+            let text = row_text(&screen, row);
+            assert!(
+                text.starts_with(&format!("base{row}")),
+                "row {row} kept a stale suggestion: {text:?}"
+            );
         }
     }
 }

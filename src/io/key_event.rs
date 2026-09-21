@@ -32,6 +32,19 @@ pub fn classify_key(event: &KeyEvent) -> ActionKey {
     }
 }
 
+/// Bytes to send before a key that arrives while a Tab's completion report is still outstanding.
+///
+/// That Tab never reached the shell — a reserved chord did — so it has to be replayed before the
+/// new key, or `git sta<Tab> -s` would end up as `git sta -s`. Another Tab is the exception: it
+/// requests a report of its own and keeps the Tab outstanding.
+pub fn withheld_tab_bytes(tab_pending: bool, code: KeyCode) -> &'static [u8] {
+    if tab_pending && code != KeyCode::Tab {
+        b"\t"
+    } else {
+        b""
+    }
+}
+
 fn xterm_modifier_code(modifiers: KeyModifiers) -> u8 {
     let mut code = 1u8;
     if modifiers.contains(KeyModifiers::SHIFT) {
