@@ -11,6 +11,7 @@ use crate::engine::provider::{CompletionProvider, Suggestion, SuggestionKind};
 use crate::engine::providers::carapace::CarapaceProvider;
 use crate::engine::providers::files::FileProvider;
 use crate::engine::providers::json_spec::{FigOption, FigSpec, FigSubcommand, JsonSpecProvider};
+use crate::engine::providers::powershell::PowerShellProvider;
 use crate::engine::providers::zoxide::ZoxideProvider;
 use crate::engine::replacement::calculate_replacement;
 use crate::io::filter::sanitize_output_stream;
@@ -585,17 +586,23 @@ fn scan_and_handle_osc(
 
 /// Determines whether file suggestions should be included alongside existing provider suggestions.
 ///
-/// If subcommands or commands were already found from `json_spec` or `carapace`,
+/// If subcommands, commands, PowerShell cmdlets, or options were already found,
 /// file completions are only included if the active token contains `/`, `\`, or starts with `.`.
 pub fn should_include_files<'a>(
     active_token: &str,
     existing: impl IntoIterator<Item = &'a Suggestion>,
 ) -> bool {
-    let has_cmd_or_subcmd = existing
-        .into_iter()
-        .any(|s| s.kind == SuggestionKind::Subcommand || s.kind == SuggestionKind::Command);
+    let has_gating_suggestion = existing.into_iter().any(|s| {
+        matches!(
+            s.kind,
+            SuggestionKind::Subcommand
+                | SuggestionKind::Command
+                | SuggestionKind::PowerShellCmdlet
+                | SuggestionKind::Option
+        )
+    });
 
-    if !has_cmd_or_subcmd {
+    if !has_gating_suggestion {
         return true;
     }
 
@@ -653,6 +660,7 @@ impl App {
         let json_spec_provider = default_json_spec_provider();
         let zoxide_provider = ZoxideProvider::default();
         let carapace_provider = CarapaceProvider::default();
+        let powershell_provider = PowerShellProvider::new(shell_type);
 
         let mut dropdown_layout: Option<DropdownLayout> = None;
         let mut event_stream = crossterm::event::EventStream::new();
@@ -812,9 +820,15 @@ impl App {
                                                 Vec::new()
                                             };
 
+                                            let ps_sugs = if json_sugs.is_empty() && powershell_provider.can_handle(root_cmd) {
+                                                powershell_provider.complete(&command_state.command_text, &command_state.cwd).await
+                                            } else {
+                                                Vec::new()
+                                            };
+
                                             let include_files = should_include_files(
                                                 active_token_text,
-                                                json_sugs.iter().chain(carapace_sugs.iter()),
+                                                json_sugs.iter().chain(carapace_sugs.iter()).chain(ps_sugs.iter()),
                                             );
 
                                             let file_sugs = if include_files && file_provider.can_handle(root_cmd) {
@@ -824,11 +838,12 @@ impl App {
                                             };
 
                                             let mut results = Vec::with_capacity(
-                                                json_sugs.len() + zoxide_sugs.len() + carapace_sugs.len() + file_sugs.len(),
+                                                json_sugs.len() + zoxide_sugs.len() + carapace_sugs.len() + ps_sugs.len() + file_sugs.len(),
                                             );
                                             results.extend(json_sugs);
                                             results.extend(zoxide_sugs);
                                             results.extend(carapace_sugs);
+                                            results.extend(ps_sugs);
                                             results.extend(file_sugs);
 
                                             results.sort_by(|a, b| b.priority.cmp(&a.priority).then_with(|| a.name.cmp(&b.name)));

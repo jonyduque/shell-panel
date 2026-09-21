@@ -288,20 +288,19 @@ pub struct PowerShellProvider {
 
 impl Default for PowerShellProvider {
     fn default() -> Self {
-        Self::new()
+        Self::new(detect_shell(None))
     }
 }
 
 impl PowerShellProvider {
-    /// Creates a new `PowerShellProvider` with auto-detected shell.
-    pub fn new() -> Self {
-        let shell = detect_shell(None);
-        Self::with_shell(shell)
+    /// Creates a new `PowerShellProvider` with the specified `ShellType`.
+    pub fn new(shell_type: ShellType) -> Self {
+        Self::with_binary(shell_type.executable_name())
     }
 
     /// Creates a new `PowerShellProvider` with the specified `ShellType`.
     pub fn with_shell(shell_type: ShellType) -> Self {
-        Self::with_binary(shell_type.executable_name())
+        Self::new(shell_type)
     }
 
     /// Creates a new `PowerShellProvider` with a custom binary path.
