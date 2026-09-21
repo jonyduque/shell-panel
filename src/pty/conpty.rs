@@ -27,8 +27,11 @@ impl ConPtySession {
         let mut cmd = CommandBuilder::new(shell_type.executable_name());
         cmd.env("ISTERM", "1");
         cmd.env("TERM", "xterm-256color");
-        cmd.arg("-noexit");
-        cmd.arg("-command");
+        cmd.arg("-NoLogo");
+        cmd.arg("-ExecutionPolicy");
+        cmd.arg("Bypass");
+        cmd.arg("-NoExit");
+        cmd.arg("-Command");
 
         // Literal PowerShell single quotes escape ($ and ` are preserved without evaluation)
         let escaped_path = script_path.to_string_lossy().replace('\'', "''");

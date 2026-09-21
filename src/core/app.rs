@@ -36,15 +36,20 @@ pub fn get_shell_integration_path() -> Result<PathBuf> {
     let local = Path::new("assets/shellIntegration.ps1");
     if local.is_file() {
         if let Ok(abs) = local.canonicalize() {
-            return Ok(abs);
+            let s = abs.to_string_lossy();
+            let clean = s.strip_prefix(r"\\?\").unwrap_or(&s);
+            return Ok(PathBuf::from(clean));
         }
     }
 
     let temp_dir = std::env::temp_dir().join("shell-panel");
     std::fs::create_dir_all(&temp_dir)?;
     let temp_path = temp_dir.join("shellIntegration.ps1");
-    std::fs::write(&temp_path, SHELL_INTEGRATION_SCRIPT)?;
-    Ok(temp_path)
+    let clean_str = temp_path.to_string_lossy();
+    let clean = clean_str.strip_prefix(r"\\?\").unwrap_or(&clean_str);
+    let target = PathBuf::from(clean);
+    std::fs::write(&target, SHELL_INTEGRATION_SCRIPT)?;
+    Ok(target)
 }
 
 /// Builds the default `JsonSpecProvider` pre-populated with git and docker specs.

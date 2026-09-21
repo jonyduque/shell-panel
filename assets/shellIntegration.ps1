@@ -1,3 +1,7 @@
+try {
+    Set-PSReadLineOption -PredictionSource None
+} catch {}
+
 $Global:__IsOriginalPrompt = $function:Prompt
 
 function Global:__IsTestingPrompt() {
