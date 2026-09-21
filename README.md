@@ -1,125 +1,130 @@
-# shell-panel 🚀
+# shell-panel
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20PowerShell-blue)](https://github.com/)
-[![Binary Size](https://img.shields.io/badge/binary%20size-1.5%20MB-success)](https://github.com/)
 
-> **Fast, native, IDE-style command line autocompletion panel for Windows PowerShell built in Rust.**  
-> A complete, zero-dependency native rewrite inspired by `@microsoft/inshellisense`. No Node.js runtime required.
+IDE-style Tab completion dropdown for PowerShell on Windows, written in Rust.
+Inspired by [`@microsoft/inshellisense`](https://github.com/microsoft/inshellisense), without a Node.js runtime.
 
----
+## How it works
 
-## Overview
+shell-panel starts PowerShell inside a ConPTY pseudo-terminal and sits between it and your terminal.
 
-`shell-panel` acts as a transparent, high-performance **ConPTY** wrapper between your terminal and a child PowerShell process (`pwsh.exe` or `powershell.exe`). 
-
-It tracks terminal state using an internal headless VT100 emulator, intercepts keystrokes to present a non-destructive floating completion dropdown, and aggregates suggestions across multiple providers (Fig JSON CLI specs, the Carapace CLI, Zoxide, and the local filesystem).
+- A small integration script is embedded in the binary and passed to PowerShell with `-EncodedCommand`: nothing is written to disk and your execution policy is not touched. It wraps `PSConsoleHostReadLine` to tell shell-panel when PSReadLine is reading a line (and in which directory), and binds **Ctrl+Alt+Shift+F12** to a handler that reports the current line, the cursor and PowerShell's own completions for it.
+- When you press **Tab**, shell-panel sends that chord, receives the report from *your* session — so variables, functions, registered argument completers and the current location are all known — merges it with its other sources and draws a dropdown over the terminal. A headless VT100 emulator mirrors the screen so the rows under the dropdown are restored exactly, colors included.
+- If PSReadLine is not reading (a program is running, `Read-Host`, a full-screen app) or no report arrives within 3 seconds, Tab goes to PowerShell unchanged.
 
 ```
-+-------------------------------------------------------------------------+
-| [Host Terminal: Windows Terminal / conhost / VSCode Terminal]           |
-+-------------------------------------------------------------------------+
-       ^ (Raw Key Events)                          | (Sanitized Host Output)
-       |                                           v
-+-------------------------------------------------------------------------+
-| shell-panel Reactor Loop                                                |
-|  - RawModeGuard (RAII raw mode & panic safety)                          |
-|  - StdioProxy & Key Classifier (Interception & VT byte encoding)       |
-|  - Headless VT100 Emulator (Buffer tracking & PSReadLine ghost filter)  |
-|  - Completion Engine (Fig specs, Carapace, Zoxide, Files)               |
-|  - Virtual Patching TUI Renderer (Non-destructive line restoration)     |
-+-------------------------------------------------------------------------+
-       | (Piped Child Input)                       ^ (Master PTY Bytes)
-       v                                           |
-+-------------------------------------------------------------------------+
-| ConPTY Pseudo-Terminal (`portable-pty`)                                  |
-|   `-- PowerShell Child (`pwsh.exe` or `powershell.exe`)                 |
-|         `-- `shellIntegration.ps1` (OSC 6973 lifecycle & CWD tracking)  |
-+-------------------------------------------------------------------------+
+Terminal (Windows Terminal, conhost, VS Code)
+   │ keys                         ▲ output (+ dropdown)
+   ▼                              │
+shell-panel: key routing · OSC 6973 messages · headless VT100 · completion engine · dropdown renderer
+   │ input (+ report request)     ▲ output (+ reports)
+   ▼                              │
+ConPTY ── pwsh.exe / powershell.exe + integration script (ReadLine markers, completion report)
 ```
 
----
+## Completion sources
 
-## ✨ Features
+| Source | Provides | Requirement |
+|--------|----------|-------------|
+| PowerShell (your session) | Cmdlets, parameters, variables, types, paths (quoted when needed), registered argument completers | PSReadLine 2.x |
+| Fig-style JSON specs | Subcommands and options of `git` and `docker` (built in) and of any spec in `%USERPROFILE%\.config\shell-panel\specs\*.json` | — |
+| Carapace | Subcommands, options and arguments of hundreds of CLIs | `carapace` on PATH |
+| Zoxide | Frequent directories for `cd`, `z`, `zi` | `zoxide` on PATH |
 
-- ⚡ **Zero Node.js Dependency:** Pure native Rust 2021 binary (~1.5 MB release build with LTO). Starts instantly with sub-millisecond overhead.
-- 🪟 **First-Class Windows Support:** Built directly on top of Microsoft Windows ConPTY (`portable-pty`).
-- 🔄 **Non-Destructive Virtual Patching:** The suggestion dropdown floats directly above or below your prompt line and restores the original terminal buffer cells on dismissal or scroll without screen tearing.
-- 👻 **PSReadLine Ghost Text Filtering:** Differentiates between real typed command characters and PSReadLine inline prediction ghost text (`dim` / `italic` / gray text), ensuring autocomplete activates on what you actually typed.
-- 🔌 **Modular Completion Providers:**
-  - **Fig CLI Specs:** Embedded and extensible JSON specifications (supports `git`, `docker`, and converted Fig schemas).
-  - **Carapace Bridge:** Queries `carapace <cmd> export` dynamically when available on `PATH`.
-  - **Zoxide Integration:** Instant fuzzy directory suggestions for `cd`, `z`, and `zi`.
-  - **Local Filesystem:** Fast asynchronous directory and file suggestions with Windows and Unix path separator awareness.
-- 📦 **100% Self-Contained Binary:** Automatically embeds `shellIntegration.ps1` inside the executable. No external script files needed on the target machine.
-- 🛡️ **Panic & Exit Safety:** RAII guards and panic hooks ensure the host console is always restored to normal mode and cursor visibility is restored, even on abrupt termination or `exit` with non-zero error codes.
+Sources are queried concurrently and merged: highest priority first, one entry per name. When a command has subcommand or option suggestions, files are only shown if the word being completed looks like a path.
 
----
+## Requirements
 
-## 🚀 Quick Start
+- Windows 10 1809 or later (ConPTY). Developed and tested on Windows 11.
+- PowerShell 7 (`pwsh.exe`) or Windows PowerShell 5.1 (`powershell.exe`), with PSReadLine 2.0 or later (bundled with both).
+- A recent stable Rust toolchain to build.
 
-### Prerequisites
-
-- **OS:** Windows 10/11 or Windows Server 2019+
-- **Rust:** Rust 1.75+ (for building from source)
-- **Shell:** PowerShell 7 (`pwsh.exe`) or Windows PowerShell 5.1 (`powershell.exe`)
-
-### Building from Source
+## Build and run
 
 ```powershell
-# Clone the repository
-git clone https://github.com/your-username/shell-panel.git
-cd shell-panel
-
-# Build release binary
 cargo build --release
-
-# Run shell-panel
 .\target\release\shell-panel.exe
 ```
 
----
+The shell starts in the directory you start shell-panel from. Starting shell-panel inside a shell-panel session is refused (`SHELL_PANEL_SESSION=1` is set inside a session; `shell-panel --check` tests for it).
 
-## ⌨️ Controls & Navigation
+## Keys
 
-When typing in PowerShell with `shell-panel` active:
+| Key | Dropdown closed | Dropdown open |
+|-----|-----------------|---------------|
+| Tab | Complete: one match is inserted directly, several open the dropdown, none falls back to PowerShell's Tab | Insert the highlighted suggestion |
+| Down / Up, Shift+Tab | Passed to PowerShell | Move the highlight (wraps around) |
+| Esc | Passed to PowerShell | Close the dropdown |
+| Any other key | Passed to PowerShell | Close the dropdown and pass the key on |
 
-| Key | Action |
-|---|---|
-| <kbd>↓</kbd> (Down Arrow) | Select next suggestion (cyclical wrapping) |
-| <kbd>↑</kbd> (Up Arrow) / <kbd>Shift+Tab</kbd> | Select previous suggestion (cyclical wrapping) |
-| <kbd>Tab</kbd> | Accept highlighted suggestion (auto-inserts text and trailing space) |
-| <kbd>Esc</kbd> | Dismiss autocomplete menu |
-| Any other key | Passed through directly to PowerShell |
+Completion works at the cursor, also in the middle of a line and on continuation lines. **Ctrl+Alt+Shift+F12** is reserved for shell-panel inside the session.
 
----
+## Command-line options
 
-## ⚙️ Command Line Options
-
-```powershell
+```
 shell-panel [OPTIONS]
 
-Options:
-  -s, --shell <SHELL>  Shell to run (pwsh, powershell). Defaults to auto-detecting pwsh.exe on PATH
-  -v, --verbose        Enable verbose debug logging to stderr
-  -c, --check          Check if currently running inside a shell-panel session
-  -h, --help           Print help
-  -V, --version        Print version
+  -s, --shell <SHELL>         pwsh or powershell (default: pwsh.exe when on PATH, else powershell.exe)
+  -v, --verbose               Write a debug log to %TEMP%\shell-panel\shell-panel.log
+  -c, --check                 Exit 0 when running inside a shell-panel session, 1 otherwise
+      --config <CONFIG>       Configuration file (default: %USERPROFILE%\.config\shell-panel.toml)
+      --no-profile            Start PowerShell without loading profiles
+      --print-default-config  Print a sample configuration and exit
+  -h, --help                  Print help
+  -V, --version               Print version
 ```
 
----
+## Configuration
 
-## 🧪 Testing
+```powershell
+New-Item -ItemType Directory -Force "$HOME\.config" | Out-Null
+shell-panel --print-default-config | Set-Content "$HOME\.config\shell-panel.toml"
+```
 
-The test suite includes 62 unit, integration, and end-to-end tests exercising real Windows ConPTY sessions, VT emulation, and completion algorithms:
+| Key | Meaning | Default |
+|-----|---------|---------|
+| `max_suggestions` | Rows per dropdown page (fewer when the terminal is short) | `5` |
+| `shell` | `"pwsh"` or `"powershell"`; `--shell` overrides it | auto |
+| `[colors] selected_bg`, `selected_fg` | Highlighted row | `cyan`, `black` |
+| `[colors] unselected_fg`, `description_fg` | Other rows, descriptions | terminal default, `gray` |
+| `[colors] selected_prefix`, `unselected_prefix` | Row prefixes | `"> "`, `"  "` |
+| `[icons] directory`, `file`, `command`, `subcommand`, `option`, `powershell_cmdlet`, `alias`, `other` | Icon per suggestion kind | see sample |
+
+Colors accept names (`red`, `bright_blue`, `gray`, …), 256-color indices (`"244"`), hex (`"#3b82f6"`, `"#38f"`), `"reverse"` and `"default"`.
+Problems are printed at start-up: an unreadable or invalid file falls back to the defaults; unknown keys are named and ignored.
+
+## Custom command specs
+
+Put Fig-style JSON files in `%USERPROFILE%\.config\shell-panel\specs\`. A spec with the same `name` as a built-in one replaces it.
+
+```json
+{
+  "name": "mytool",
+  "description": "Internal deployment tool",
+  "subcommands": [
+    { "name": "deploy", "description": "Ship it", "options": [ { "name": ["-f", "--force"], "description": "Skip checks" } ] }
+  ],
+  "options": [ { "name": "--help", "description": "Show help" } ]
+}
+```
+
+## Testing
 
 ```powershell
 cargo test
 ```
 
----
+Most tests are pure. The PTY and end-to-end tests start real PowerShell sessions (with `-NoProfile`) through ConPTY — the end-to-end ones run the actual `shell-panel` binary — and need `pwsh.exe` or `powershell.exe` on PATH.
 
-## 📄 License
+## Known limitations
 
-Distributed under the MIT License. See [LICENSE](LICENSE) for more information.
+- Windows and PowerShell only.
+- Under execution policy `Restricted`, PSReadLine cannot load; shell-panel then gets no ReadLine markers and no completion report, and behaves as a plain pass-through terminal. shell-panel deliberately does not pass `-ExecutionPolicy Bypass`.
+- PowerShell's completions are computed on the shell's thread, like native Tab: a slow completer delays the dropdown (after 3 seconds Tab falls back to PowerShell).
+- The report travels through the terminal stream as an OSC sequence. Shell messages longer than 1 MiB, or containing raw control bytes, are treated as ordinary output. This is verified on Windows 11; very old Windows 10 console hosts may truncate long sequences.
+- A Tab character inside pasted text triggers completion instead of being inserted.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

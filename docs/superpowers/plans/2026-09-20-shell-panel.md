@@ -1,5 +1,7 @@
 # shell-panel Implementation Plan
 
+> **Status:** executed — see the git history for the resulting commits. Checkbox state below was not maintained during execution. Parts of the design were later replaced: see `2026-09-21-review-fixes.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement `shell-panel`, an IDE-style command line autocompletion panel in Rust for Windows PowerShell using ConPTY, non-destructive virtual terminal patching, and modular completion providers.

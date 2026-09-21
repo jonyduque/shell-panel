@@ -1,5 +1,7 @@
 # Fix Shell-Panel UX, Tab-Only Completion & Key Handling Implementation Plan
 
+> **Status:** executed — see the git history for the resulting commits. Checkbox state below was not maintained during execution. Parts of the design were later replaced: see `2026-09-21-review-fixes.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Fix real-world usability bugs in `shell-panel`: disable conflicting PSReadLine predictions, fix `\\?\` path blocking of `shellIntegration.ps1`, fix Backspace deleting whole words, implement full xterm modifiers for Ctrl+Shift text selection, switch autocomplete triggering to Tab-only (eliminating typing lag), add icons to suggestion items, and ensure subcommands take precedence over file listings.
