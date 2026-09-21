@@ -63,7 +63,6 @@ impl Terminal {
         cmd.arg("--no-profile");
         cmd.cwd(cwd);
         // `cargo test` may itself be running inside a shell-panel session.
-        cmd.env_remove("ISTERM");
         cmd.env_remove("SHELL_PANEL_SESSION");
         Self::spawn(cmd)
     }

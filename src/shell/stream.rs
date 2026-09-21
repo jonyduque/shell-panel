@@ -46,15 +46,41 @@ fn scan_messages(
         }
 
         let body = &data[i + OSC_PREFIX.len()..];
-        let terminator = body.iter().enumerate().find_map(|(offset, &b)| {
+        let mut terminator = None;
+        let mut invalid = false;
+        for (offset, &b) in body.iter().enumerate() {
             if b == 0x07 {
-                Some((offset, 1))
-            } else if body[offset..].starts_with(b"\x1b\\") {
-                Some((offset, 2))
-            } else {
-                None
+                terminator = Some((offset, 1));
+                break;
             }
-        });
+            if b == 0x1b {
+                if body[offset..].starts_with(b"\x1b\\") {
+                    terminator = Some((offset, 2));
+                    break;
+                }
+                if offset == body.len() - 1 {
+                    // Could be the start of an ST terminator split across the chunk boundary.
+                    break;
+                }
+                invalid = true;
+                break;
+            }
+            if b < 0x20 {
+                // The shell escapes every control character in a payload (`__SP-Escape`), so a
+                // raw one here proves this was never one of our messages.
+                invalid = true;
+                break;
+            }
+        }
+
+        if invalid {
+            // Not one of our messages: emit the prefix literally and resume right after it.
+            term.process(OSC_PREFIX);
+            clean_output.extend_from_slice(OSC_PREFIX);
+            i += OSC_PREFIX.len();
+            last = i;
+            continue;
+        }
 
         let Some((offset, terminator_len)) = terminator else {
             if data.len() - i > MAX_MESSAGE_BYTES {

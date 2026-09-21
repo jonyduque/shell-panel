@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use shell_panel::cli::Cli;
@@ -7,15 +7,23 @@ use shell_panel::pty::conpty::SESSION_ENV;
 use shell_panel::pty::shell::is_supported_shell;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-/// Sends `tracing` output to a log file: the terminal is in raw mode and owned by the shell.
-fn init_file_logging() -> anyhow::Result<PathBuf> {
-    let dir = std::env::temp_dir().join("shell-panel");
-    std::fs::create_dir_all(&dir)?;
+/// Opens (creating if necessary) the log file inside `dir`, returning its path and handle.
+/// Split out of [`init_file_logging`] so the fallible I/O can be unit-tested without touching
+/// the process-global `tracing` subscriber.
+fn open_log_file(dir: &Path) -> anyhow::Result<(PathBuf, std::fs::File)> {
+    std::fs::create_dir_all(dir)?;
     let path = dir.join("shell-panel.log");
     let file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(&path)?;
+    Ok((path, file))
+}
+
+/// Sends `tracing` output to a log file: the terminal is in raw mode and owned by the shell.
+fn init_file_logging() -> anyhow::Result<PathBuf> {
+    let dir = std::env::temp_dir().join("shell-panel");
+    let (path, file) = open_log_file(&dir)?;
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new("shell_panel=debug"))
         .with(
@@ -52,8 +60,11 @@ async fn main() -> anyhow::Result<()> {
     }
 
     if cli.verbose {
-        let path = init_file_logging()?;
-        eprintln!("shell-panel: writing debug log to {}", path.display());
+        match init_file_logging() {
+            Ok(path) => eprintln!("shell-panel: writing debug log to {}", path.display()),
+            // Logging is diagnostic only: an unwritable log directory must not block startup.
+            Err(err) => eprintln!("shell-panel: could not start file logging: {err}"),
+        }
     }
 
     // The shell's output is raw VT. Windows Terminal always interprets it; a legacy console
@@ -91,4 +102,22 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_open_log_file_reports_error_for_unwritable_directory() {
+        // A regular file cannot be used as a directory: create_dir_all must fail under it.
+        let blocker = std::env::temp_dir().join(format!("sp_log_blocker_{}", std::process::id()));
+        std::fs::write(&blocker, b"not a directory").unwrap();
+        let dir = blocker.join("shell-panel");
+
+        let result = open_log_file(&dir);
+
+        let _ = std::fs::remove_file(&blocker);
+        assert!(result.is_err());
+    }
 }
