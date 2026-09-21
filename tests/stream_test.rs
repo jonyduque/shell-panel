@@ -1,5 +1,5 @@
 use shell_panel::shell::command_state::CommandState;
-use shell_panel::shell::stream::ingest_pty_chunk;
+use shell_panel::shell::stream::{ingest_pty_chunk, MAX_MESSAGE_BYTES};
 use shell_panel::vt::emulator::HeadlessTerminal;
 
 #[test]
@@ -31,4 +31,18 @@ fn test_split_prefix_and_st_terminator() {
     assert_eq!(first, b"a");
     assert_eq!(second, b"b");
     assert!(!state.reading_line);
+}
+
+#[test]
+fn test_unterminated_message_is_not_buffered_forever() {
+    let mut term = HeadlessTerminal::new(80, 24);
+    let mut state = CommandState::default();
+    let mut residual = Vec::new();
+
+    let mut chunk = b"\x1b]6973;CMP;".to_vec();
+    chunk.extend(std::iter::repeat(b'a').take(MAX_MESSAGE_BYTES + 1));
+    let out = ingest_pty_chunk(&chunk, &mut term, &mut state, &mut residual);
+
+    assert!(residual.is_empty());
+    assert_eq!(out.len(), chunk.len());
 }

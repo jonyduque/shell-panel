@@ -5,6 +5,10 @@ use crate::vt::emulator::HeadlessTerminal;
 
 const OSC_PREFIX: &[u8] = b"\x1b]6973;";
 
+/// Largest unterminated message kept waiting for its terminator. A completion report is capped
+/// at 100 matches (tens of kilobytes); anything larger is passed through as ordinary output.
+pub const MAX_MESSAGE_BYTES: usize = 1024 * 1024;
+
 /// Processes one chunk of PTY output: strips input-protocol negotiation, applies and removes
 /// shell-panel's OSC 6973 messages, feeds the rest to the headless terminal and returns it for
 /// echoing to the host terminal. A message split across chunks waits in `residual`.
@@ -53,8 +57,14 @@ fn scan_messages(
         });
 
         let Some((offset, terminator_len)) = terminator else {
-            // Unterminated message at the chunk boundary: wait for the next chunk.
-            residual.extend_from_slice(&data[i..]);
+            if data.len() - i > MAX_MESSAGE_BYTES {
+                // Never terminated: stop waiting and treat it as ordinary output.
+                term.process(&data[i..]);
+                clean_output.extend_from_slice(&data[i..]);
+            } else {
+                // Unterminated message at the chunk boundary: wait for the next chunk.
+                residual.extend_from_slice(&data[i..]);
+            }
             return clean_output;
         };
 

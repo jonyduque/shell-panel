@@ -577,9 +577,16 @@ impl App {
         let (pty_tx, mut pty_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(1024);
         std::thread::spawn(move || {
             let mut buf = [0u8; 4096];
-            while let Ok(n) = pty_reader.read(&mut buf) {
-                if n == 0 || pty_tx.blocking_send(buf[..n].to_vec()).is_err() {
-                    break;
+            loop {
+                match pty_reader.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        if pty_tx.blocking_send(buf[..n].to_vec()).is_err() {
+                            break;
+                        }
+                    }
+                    Err(ref err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(_) => break,
                 }
             }
         });
@@ -602,12 +609,15 @@ impl App {
         // Deadline of the report requested by the last Tab, while it is outstanding.
         let mut report_deadline: Option<Instant> = None;
         let mut exit_code: Option<u32> = None;
+        let mut input_open = true;
 
         loop {
             let deadline = report_deadline.unwrap_or_else(Instant::now);
 
             tokio::select! {
                 code = &mut exit_rx => {
+                    // Restore the covered rows before the drain loop writes more PTY output.
+                    dropdown.close(&term, &mut stdout);
                     // The shell's last output may still be in flight: drain until the PTY is quiet.
                     let drain_until = Instant::now() + Duration::from_secs(1);
                     while let Ok(Some(chunk)) = tokio::time::timeout_at(
@@ -664,10 +674,15 @@ impl App {
                     write_to_pty(&mut pty_writer, b"\t");
                 }
 
-                maybe_event = event_stream.next() => {
+                maybe_event = event_stream.next(), if input_open => {
                     let event = match maybe_event {
                         Some(Ok(ev)) => ev,
-                        _ => continue,
+                        Some(Err(_)) => continue,
+                        // The console input is gone; polling again would return None at once, forever.
+                        None => {
+                            input_open = false;
+                            continue;
+                        }
                     };
 
                     match event {
