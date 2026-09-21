@@ -162,3 +162,56 @@ fn test_ctrl_shift_arrows_emit_xterm_code_6() {
     let end_ctrl_shift = KeyEvent::new(KeyCode::End, KeyModifiers::CONTROL | KeyModifiers::SHIFT);
     assert_eq!(encode_key_event(&end_ctrl_shift), b"\x1b[1;6F".to_vec());
 }
+
+#[test]
+fn test_altgr_characters_are_sent_as_text() {
+    // Windows reports AltGr as Ctrl+Alt.
+    let altgr = KeyModifiers::CONTROL | KeyModifiers::ALT;
+    for c in ['@', '?', '[', '\\', ']', '€', '{'] {
+        let ev = make_key_event(KeyCode::Char(c), altgr, KeyEventKind::Press);
+        assert_eq!(
+            encode_key_event(&ev),
+            c.to_string().into_bytes(),
+            "AltGr char {:?}",
+            c
+        );
+    }
+    let ev = make_key_event(KeyCode::Char('a'), altgr, KeyEventKind::Press);
+    assert_eq!(encode_key_event(&ev), vec![0x1b, 0x01]); // a real Ctrl+Alt+A chord
+}
+
+#[test]
+fn test_backspace_and_enter_chords() {
+    let key = |code, mods| encode_key_event(&make_key_event(code, mods, KeyEventKind::Press));
+    assert_eq!(key(KeyCode::Backspace, KeyModifiers::NONE), vec![0x7f]);
+    assert_eq!(key(KeyCode::Backspace, KeyModifiers::CONTROL), vec![0x08]); // BackwardKillWord
+    assert_eq!(key(KeyCode::Backspace, KeyModifiers::ALT), vec![0x1b, 0x7f]);
+    assert_eq!(key(KeyCode::Enter, KeyModifiers::NONE), b"\r".to_vec());
+    // xterm has no sequence for these; ConPTY accepts win32-input-mode records.
+    assert_eq!(
+        key(KeyCode::Enter, KeyModifiers::SHIFT),
+        b"\x1b[13;28;13;1;16;1_".to_vec()
+    );
+    assert_eq!(
+        key(KeyCode::Enter, KeyModifiers::CONTROL),
+        b"\x1b[13;28;13;1;8;1_".to_vec()
+    );
+}
+
+#[test]
+fn test_function_keys_keep_modifiers() {
+    let key = |code, mods| encode_key_event(&make_key_event(code, mods, KeyEventKind::Press));
+    assert_eq!(key(KeyCode::F(1), KeyModifiers::NONE), b"\x1bOP".to_vec());
+    assert_eq!(
+        key(KeyCode::F(1), KeyModifiers::SHIFT),
+        b"\x1b[1;2P".to_vec()
+    );
+    assert_eq!(
+        key(KeyCode::F(5), KeyModifiers::CONTROL),
+        b"\x1b[15;5~".to_vec()
+    );
+    assert_eq!(
+        key(KeyCode::F(12), KeyModifiers::NONE),
+        b"\x1b[24~".to_vec()
+    );
+}

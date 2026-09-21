@@ -46,42 +46,70 @@ fn xterm_modifier_code(modifiers: KeyModifiers) -> u8 {
     code
 }
 
+/// Control code produced by Ctrl+`c`, if any.
+fn control_byte(c: char) -> Option<u8> {
+    if c.is_ascii_alphabetic() {
+        return Some(c.to_ascii_lowercase() as u8 - b'a' + 1);
+    }
+    match c {
+        '@' | ' ' => Some(0),
+        '[' => Some(0x1b),
+        '\\' => Some(0x1c),
+        ']' => Some(0x1d),
+        '^' => Some(0x1e),
+        '_' => Some(0x1f),
+        '?' => Some(0x7f),
+        _ => None,
+    }
+}
+
 /// Encodes a crossterm [`KeyEvent`] into raw VT/terminal byte sequence for writing to PTY.
 pub fn encode_key_event(event: &KeyEvent) -> Vec<u8> {
     let mod_code = xterm_modifier_code(event.modifiers);
     match event.code {
         KeyCode::Char(c) => {
-            if event.modifiers.contains(KeyModifiers::CONTROL) {
-                if c.is_ascii_alphabetic() {
-                    vec![(c.to_ascii_lowercase() as u8) - b'a' + 1]
-                } else {
-                    match c {
-                        '@' | ' ' => vec![0],
-                        '[' => vec![0x1b],
-                        '\\' => vec![0x1c],
-                        ']' => vec![0x1d],
-                        '^' => vec![0x1e],
-                        '_' => vec![0x1f],
-                        '?' => vec![0x7f],
-                        _ => {
-                            let mut buf = [0u8; 4];
-                            c.encode_utf8(&mut buf).as_bytes().to_vec()
-                        }
-                    }
-                }
-            } else if event.modifiers.contains(KeyModifiers::ALT) {
-                let mut buf = [0u8; 4];
-                let s = c.encode_utf8(&mut buf);
-                let mut bytes = vec![0x1b];
-                bytes.extend_from_slice(s.as_bytes());
-                bytes
+            let ctrl = event.modifiers.contains(KeyModifiers::CONTROL);
+            let alt = event.modifiers.contains(KeyModifiers::ALT);
+            let mut buf = [0u8; 4];
+            let text = c.encode_utf8(&mut buf).as_bytes().to_vec();
+
+            // Windows reports AltGr as Ctrl+Alt. A non-letter with both modifiers is the character
+            // the keyboard layout produced (e.g. '@' via AltGr+Q on German layouts), not a chord.
+            if ctrl && alt && !c.is_ascii_alphabetic() {
+                return text;
+            }
+
+            let mut bytes = if ctrl {
+                control_byte(c).map(|b| vec![b]).unwrap_or(text)
             } else {
-                let mut buf = [0u8; 4];
-                c.encode_utf8(&mut buf).as_bytes().to_vec()
+                text
+            };
+            if alt {
+                bytes.insert(0, 0x1b);
+            }
+            bytes
+        }
+        KeyCode::Enter => {
+            // win32-input-mode record: Vk=13, Sc=28, Uc=13, KeyDown, control-key state, repeat 1.
+            let shift = event.modifiers.contains(KeyModifiers::SHIFT);
+            let ctrl = event.modifiers.contains(KeyModifiers::CONTROL);
+            match (shift, ctrl) {
+                (false, false) => vec![b'\r'],
+                _ => {
+                    let state = (if shift { 0x10 } else { 0 }) | (if ctrl { 0x08 } else { 0 });
+                    format!("\x1b[13;28;13;1;{};1_", state).into_bytes()
+                }
             }
         }
-        KeyCode::Enter => vec![b'\r'],
-        KeyCode::Backspace => vec![b'\x7f'],
+        KeyCode::Backspace => {
+            if event.modifiers.contains(KeyModifiers::CONTROL) {
+                vec![0x08]
+            } else if event.modifiers.contains(KeyModifiers::ALT) {
+                vec![0x1b, 0x7f]
+            } else {
+                vec![0x7f]
+            }
+        }
         KeyCode::Tab => vec![b'\t'],
         KeyCode::BackTab => vec![0x1b, b'[', b'Z'],
         KeyCode::Esc => vec![0x1b],
@@ -155,21 +183,29 @@ pub fn encode_key_event(event: &KeyEvent) -> Vec<u8> {
                 b"\x1b[2~".to_vec()
             }
         }
-        KeyCode::F(n) => match n {
-            1 => b"\x1bOP".to_vec(),
-            2 => b"\x1bOQ".to_vec(),
-            3 => b"\x1bOR".to_vec(),
-            4 => b"\x1bOS".to_vec(),
-            5 => b"\x1b[15~".to_vec(),
-            6 => b"\x1b[17~".to_vec(),
-            7 => b"\x1b[18~".to_vec(),
-            8 => b"\x1b[19~".to_vec(),
-            9 => b"\x1b[20~".to_vec(),
-            10 => b"\x1b[21~".to_vec(),
-            11 => b"\x1b[23~".to_vec(),
-            12 => b"\x1b[24~".to_vec(),
-            _ => Vec::new(),
-        },
+        KeyCode::F(n) => {
+            // F1-F4 are SS3 P..S (CSI 1;m P..S with modifiers); the rest are CSI <code>~.
+            let code = match n {
+                5 => 15,
+                6 => 17,
+                7 => 18,
+                8 => 19,
+                9 => 20,
+                10 => 21,
+                11 => 23,
+                12 => 24,
+                _ => 0,
+            };
+            match (n, mod_code > 1) {
+                (1..=4, false) => vec![0x1b, b'O', b'P' + (n - 1)],
+                (1..=4, true) => {
+                    format!("\x1b[1;{}{}", mod_code, (b'P' + (n - 1)) as char).into_bytes()
+                }
+                (5..=12, false) => format!("\x1b[{}~", code).into_bytes(),
+                (5..=12, true) => format!("\x1b[{};{}~", code, mod_code).into_bytes(),
+                _ => Vec::new(),
+            }
+        }
         _ => Vec::new(),
     }
 }
