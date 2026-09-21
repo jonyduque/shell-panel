@@ -108,7 +108,8 @@ fn test_merge_prefers_specs_hides_files_and_dedupes_path_styles() {
 
 #[test]
 fn test_plan_replacement_uses_shell_range_or_raw_token() {
-    // PowerShell's range keeps the `[` in front of the type name.
+    // PowerShell's range keeps the `[` in front of the type name. No match is reported here, so
+    // there is no result type either: only the range mechanics apply.
     let r = report("[System.IO.Fi", 13, 1, 12, vec![]);
     let shell = Suggestion::new("System.IO.File", "File", None, 70).with_shell_range();
     assert_eq!(
@@ -143,6 +144,42 @@ fn test_plan_replacement_uses_shell_range_or_raw_token() {
             insert_text: r"'C:\My Documents' ".into()
         }
     );
+}
+
+#[test]
+fn test_plan_replacement_closes_a_type_literal() {
+    let type_match = vec![m("System.IO.File", "File", "Type", "System.IO.File")];
+    let sug = || Suggestion::new("System.IO.File", "File", None, 70).with_shell_range();
+
+    // PowerShell never supplies the `]`: `[System.IO.Fi` must become `[System.IO.File]`.
+    let r = report("[System.IO.Fi", 13, 1, 12, type_match.clone());
+    assert_eq!(
+        plan_replacement(&r, &sug()),
+        ReplacementAction {
+            backspace_count: 0,
+            delete_count: 0,
+            insert_text: "le]".into()
+        }
+    );
+
+    // A bracket that is already closed is left alone.
+    let r = report("[System.IO.Fi]", 13, 1, 12, type_match.clone());
+    assert_eq!(plan_replacement(&r, &sug()).insert_text, "le ");
+
+    // Outside a type literal the type name is an ordinary argument.
+    let r = report("New-Object System.IO.Fi", 23, 11, 12, type_match.clone());
+    assert_eq!(plan_replacement(&r, &sug()).insert_text, "le ");
+
+    // A namespace is a step on the way to a type: no bracket and no space, the user keeps typing.
+    let r = report(
+        "[Sys",
+        4,
+        1,
+        3,
+        vec![m("System", "System", "Namespace", "")],
+    );
+    let namespace = Suggestion::new("System", "System", None, 70).with_shell_range();
+    assert_eq!(plan_replacement(&r, &namespace).insert_text, "tem");
 }
 
 #[test]

@@ -130,17 +130,58 @@ pub fn merge_suggestions(
     results
 }
 
+/// The result type PowerShell reported for the match `suggestion` was built from.
+fn shell_result_type<'a>(report: &'a ShellReport, suggestion: &Suggestion) -> Option<&'a str> {
+    if !suggestion.uses_shell_range {
+        return None;
+    }
+    report
+        .matches
+        .iter()
+        .find(|m| m.0 == suggestion.name)
+        .map(|m| m.2.as_str())
+}
+
+/// What a completion needs after it that PowerShell does not supply, or `None` to keep the
+/// ordinary trailing space.
+///
+/// A type literal is reported without the `]` that closes it, so the bracket is added here. A
+/// namespace is only a step on the way to a type, so the cursor stays right behind it.
+fn missing_suffix(
+    report: &ShellReport,
+    range: Option<(usize, usize)>,
+    result_type: &str,
+) -> Option<&'static str> {
+    match result_type {
+        "Namespace" => Some(""),
+        "Type" => {
+            let (start, end) = range?;
+            let opened = report.line[..start].ends_with('[');
+            let closed = report.line[end..].starts_with(']');
+            (opened && !closed).then_some("]")
+        }
+        _ => None,
+    }
+}
+
 /// Keys that replace the text around the cursor with `suggestion`.
 pub fn plan_replacement(report: &ShellReport, suggestion: &Suggestion) -> ReplacementAction {
     let cursor = report.cursor_byte().unwrap_or(report.line.len());
-    match report.replacement_range() {
+    let range = report.replacement_range();
+    let mut action = match range {
         Some((start, end)) if suggestion.uses_shell_range => replace_range(
             &report.line[start..cursor],
             &report.line[cursor..end],
             &suggestion.name,
         ),
         _ => calculate_replacement(active_token_raw(&report.line[..cursor]), &suggestion.name),
+    };
+    if let Some(suffix) = shell_result_type(report, suggestion)
+        .and_then(|result_type| missing_suffix(report, range, result_type))
+    {
+        action.insert_text = format!("{}{}", action.insert_text.trim_end_matches(' '), suffix);
     }
+    action
 }
 
 /// Queries the external providers and merges their results with the shell's own completions.
