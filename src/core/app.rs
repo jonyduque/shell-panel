@@ -1,14 +1,13 @@
 use std::collections::HashSet;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use anyhow::Result;
 use futures_util::StreamExt;
 
 use crate::core::config::Config;
 use crate::engine::lexer::lex_command_line;
-use crate::engine::provider::{CompletionProvider, Suggestion};
+use crate::engine::provider::{CompletionProvider, Suggestion, SuggestionKind};
 use crate::engine::providers::carapace::CarapaceProvider;
 use crate::engine::providers::files::FileProvider;
 use crate::engine::providers::json_spec::{FigOption, FigSpec, FigSubcommand, JsonSpecProvider};
@@ -584,6 +583,25 @@ fn scan_and_handle_osc(
     clean_output
 }
 
+/// Determines whether file suggestions should be included alongside existing provider suggestions.
+///
+/// If subcommands or commands were already found from `json_spec` or `carapace`,
+/// file completions are only included if the active token contains `/`, `\`, or starts with `.`.
+pub fn should_include_files<'a>(
+    active_token: &str,
+    existing: impl IntoIterator<Item = &'a Suggestion>,
+) -> bool {
+    let has_cmd_or_subcmd = existing
+        .into_iter()
+        .any(|s| s.kind == SuggestionKind::Subcommand || s.kind == SuggestionKind::Command);
+
+    if !has_cmd_or_subcmd {
+        return true;
+    }
+
+    active_token.contains('/') || active_token.contains('\\') || active_token.starts_with('.')
+}
+
 pub struct App {
     pub config: Config,
     pub override_shell: Option<String>,
@@ -636,81 +654,10 @@ impl App {
         let mut dropdown_layout: Option<DropdownLayout> = None;
         let mut event_stream = crossterm::event::EventStream::new();
         let mut stdout = std::io::stdout();
-
-        let debounce_duration = Duration::from_millis(self.config.debounce_ms);
-        let mut debounce_deadline: Option<tokio::time::Instant> = None;
         let mut osc_residual: Vec<u8> = Vec::new();
 
         loop {
             tokio::select! {
-                // Debounce completion query
-                _ = async {
-                    match debounce_deadline {
-                        Some(deadline) => tokio::time::sleep_until(deadline).await,
-                        None => std::future::pending().await,
-                    }
-                }, if debounce_deadline.is_some() => {
-                    debounce_deadline = None;
-                    let text = command_state.command_text.clone();
-
-                    if text.trim().is_empty() {
-                        if suggestion_state.visible {
-                            if let Some(layout) = dropdown_layout.take() {
-                                let _ = Renderer::clear_dropdown(&layout, &term, &mut stdout);
-                            }
-                            suggestion_state.dismiss();
-                        }
-                    } else {
-                        let tokens = lex_command_line(&text);
-                        let root_cmd = tokens.first().map(|t| t.text.as_str()).unwrap_or("");
-                        let json_fut = async {
-                            if json_spec_provider.can_handle(root_cmd) {
-                                json_spec_provider.complete(&text, &command_state.cwd).await
-                            } else {
-                                Vec::<Suggestion>::new()
-                            }
-                        };
-                        let zoxide_fut = async {
-                            if zoxide_provider.can_handle(root_cmd) {
-                                zoxide_provider.complete(&text, &command_state.cwd).await
-                            } else {
-                                Vec::<Suggestion>::new()
-                            }
-                        };
-                        let file_fut = async {
-                            if file_provider.can_handle(root_cmd) {
-                                file_provider.complete(&text, &command_state.cwd).await
-                            } else {
-                                Vec::<Suggestion>::new()
-                            }
-                        };
-
-                        let (mut json_sugs, mut zoxide_sugs, mut file_sugs) = tokio::join!(json_fut, zoxide_fut, file_fut);
-                        let mut results = Vec::with_capacity(json_sugs.len() + zoxide_sugs.len() + file_sugs.len());
-                        results.append(&mut json_sugs);
-                        results.append(&mut zoxide_sugs);
-                        if results.is_empty() && carapace_provider.can_handle(root_cmd) {
-                            let mut carapace_sugs = carapace_provider.complete(&text, &command_state.cwd).await;
-                            results.append(&mut carapace_sugs);
-                        }
-                        results.append(&mut file_sugs);
-
-                        results.sort_by(|a, b| b.priority.cmp(&a.priority).then_with(|| a.name.cmp(&b.name)));
-                        let mut seen = HashSet::new();
-                        results.retain(|s| seen.insert(s.name.clone()));
-
-                        if let Some(layout) = dropdown_layout.take() {
-                            let _ = Renderer::clear_dropdown(&layout, &term, &mut stdout);
-                        }
-
-                        suggestion_state.set_suggestions(results);
-                        if suggestion_state.visible {
-                            let (cx, cy) = term.cursor_position();
-                            dropdown_layout = Renderer::render_dropdown(&suggestion_state, &term, cx, cy, &mut stdout).ok().flatten();
-                        }
-                    }
-                }
-
                 // PTY Output chunk
                 chunk = pty_rx.recv() => {
                     let chunk = match chunk {
@@ -731,6 +678,7 @@ impl App {
                     // 3. If dropdown was visible and terminal output arrived, clear dropdown to avoid visual tearing
                     if let Some(layout) = dropdown_layout.take() {
                         let _ = Renderer::clear_dropdown(&layout, &term, &mut stdout);
+                        suggestion_state.dismiss();
                     }
 
                     // 4. Print clean bytes to stdout (no internal OSC sequences leak to host) and flush
@@ -742,21 +690,7 @@ impl App {
                     // 5. If NOT in alternate buffer and prompt ended (!command_state.in_prompt):
                     if !term.is_alternate_buffer() && !command_state.in_prompt {
                         if let (Some(p_row), Some(p_col)) = (command_state.prompt_line, command_state.prompt_end_x) {
-                            let new_text = term.extract_command_text(p_row, p_col);
-                            if new_text != command_state.command_text {
-                                command_state.command_text = new_text;
-                                if command_state.command_text.trim().is_empty() {
-                                    debounce_deadline = None;
-                                    if suggestion_state.visible {
-                                        if let Some(layout) = dropdown_layout.take() {
-                                            let _ = Renderer::clear_dropdown(&layout, &term, &mut stdout);
-                                        }
-                                        suggestion_state.dismiss();
-                                    }
-                                } else {
-                                    debounce_deadline = Some(tokio::time::Instant::now() + debounce_duration);
-                                }
-                            }
+                            command_state.command_text = term.extract_command_text(p_row, p_col);
                         }
                     }
                 }
@@ -824,35 +758,97 @@ impl App {
                                     }
                                 }
                                 ActionKey::AcceptSuggestion => {
-                                    if suggestion_state.visible && suggestion_state.active_item().is_some() {
-                                        let selected_name = suggestion_state.active_item().unwrap().name.clone();
+                                    if suggestion_state.visible {
+                                        let selected_name = suggestion_state.active_item().map(|s| s.name.clone());
                                         if let Some(layout) = dropdown_layout.take() {
                                             let _ = Renderer::clear_dropdown(&layout, &term, &mut stdout);
                                         }
                                         suggestion_state.dismiss();
 
-                                        let tokens = lex_command_line(&command_state.command_text);
-                                        let active_token_text = tokens.last().map(|t| t.text.as_str()).unwrap_or("");
-                                        let replacement = calculate_replacement(active_token_text, &selected_name);
+                                        if let Some(selected_name) = selected_name {
+                                            let tokens = lex_command_line(&command_state.command_text);
+                                            let active_token_text = tokens.last().map(|t| t.text.as_str()).unwrap_or("");
+                                            let replacement = calculate_replacement(active_token_text, &selected_name);
 
-                                        let mut write_buf = Vec::new();
-                                        for _ in 0..replacement.backspace_count {
-                                            write_buf.push(0x08);
-                                        }
-                                        write_buf.extend_from_slice(replacement.insert_text.as_bytes());
-                                        let _ = pty_writer.write_all(&write_buf);
-                                        let _ = pty_writer.flush();
-                                    } else {
-                                        if suggestion_state.visible {
-                                            if let Some(layout) = dropdown_layout.take() {
-                                                let _ = Renderer::clear_dropdown(&layout, &term, &mut stdout);
+                                            let mut write_buf = Vec::new();
+                                            for _ in 0..replacement.backspace_count {
+                                                write_buf.push(0x7f);
                                             }
-                                            suggestion_state.dismiss();
-                                        }
-                                        let encoded = encode_key_event(&key_event);
-                                        if !encoded.is_empty() {
-                                            let _ = pty_writer.write_all(&encoded);
+                                            write_buf.extend_from_slice(replacement.insert_text.as_bytes());
+                                            let _ = pty_writer.write_all(&write_buf);
                                             let _ = pty_writer.flush();
+                                        }
+                                    } else {
+                                        if let (Some(p_row), Some(p_col)) = (command_state.prompt_line, command_state.prompt_end_x) {
+                                            command_state.command_text = term.extract_command_text(p_row, p_col);
+                                        }
+
+                                        if command_state.command_text.trim().is_empty() {
+                                            let _ = pty_writer.write_all(b"\t");
+                                            let _ = pty_writer.flush();
+                                        } else {
+                                            let tokens = lex_command_line(&command_state.command_text);
+                                            let root_cmd = tokens.first().map(|t| t.text.as_str()).unwrap_or("");
+                                            let active_token_text = tokens.last().map(|t| t.text.as_str()).unwrap_or("");
+
+                                            let json_sugs = if json_spec_provider.can_handle(root_cmd) {
+                                                json_spec_provider.complete(&command_state.command_text, &command_state.cwd).await
+                                            } else {
+                                                Vec::new()
+                                            };
+
+                                            let zoxide_sugs = if zoxide_provider.can_handle(root_cmd) {
+                                                zoxide_provider.complete(&command_state.command_text, &command_state.cwd).await
+                                            } else {
+                                                Vec::new()
+                                            };
+
+                                            let carapace_sugs = if json_sugs.is_empty() && carapace_provider.can_handle(root_cmd) {
+                                                carapace_provider.complete(&command_state.command_text, &command_state.cwd).await
+                                            } else {
+                                                Vec::new()
+                                            };
+
+                                            let include_files = should_include_files(
+                                                active_token_text,
+                                                json_sugs.iter().chain(carapace_sugs.iter()),
+                                            );
+
+                                            let file_sugs = if include_files && file_provider.can_handle(root_cmd) {
+                                                file_provider.complete(&command_state.command_text, &command_state.cwd).await
+                                            } else {
+                                                Vec::new()
+                                            };
+
+                                            let mut results = Vec::with_capacity(
+                                                json_sugs.len() + zoxide_sugs.len() + carapace_sugs.len() + file_sugs.len(),
+                                            );
+                                            results.extend(json_sugs);
+                                            results.extend(zoxide_sugs);
+                                            results.extend(carapace_sugs);
+                                            results.extend(file_sugs);
+
+                                            results.sort_by(|a, b| b.priority.cmp(&a.priority).then_with(|| a.name.cmp(&b.name)));
+                                            let mut seen = HashSet::new();
+                                            results.retain(|s| seen.insert(s.name.clone()));
+
+                                            if results.is_empty() {
+                                                let _ = pty_writer.write_all(b"\t");
+                                                let _ = pty_writer.flush();
+                                            } else if results.len() == 1 {
+                                                let replacement = calculate_replacement(active_token_text, &results[0].name);
+                                                let mut write_buf = Vec::new();
+                                                for _ in 0..replacement.backspace_count {
+                                                    write_buf.push(0x7f);
+                                                }
+                                                write_buf.extend_from_slice(replacement.insert_text.as_bytes());
+                                                let _ = pty_writer.write_all(&write_buf);
+                                                let _ = pty_writer.flush();
+                                            } else {
+                                                suggestion_state.set_suggestions(results);
+                                                let (cx, cy) = term.cursor_position();
+                                                dropdown_layout = Renderer::render_dropdown(&suggestion_state, &term, cx, cy, &mut stdout).ok().flatten();
+                                            }
                                         }
                                     }
                                 }
@@ -867,7 +863,6 @@ impl App {
                                     if key_event.code == crossterm::event::KeyCode::Enter {
                                         command_state.command_text.clear();
                                         command_state.prompt_end_x = None;
-                                        debounce_deadline = None;
                                     }
 
                                     let encoded = encode_key_event(&key_event);
