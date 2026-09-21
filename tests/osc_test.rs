@@ -2,20 +2,11 @@ use shell_panel::shell::command_state::CommandState;
 use shell_panel::shell::osc::{parse_osc_sequence, unescape_value, OscEvent};
 
 #[test]
-fn test_parse_osc_sequences() {
-    assert_eq!(parse_osc_sequence("6973;PS"), Some(OscEvent::PromptStarted));
-    assert_eq!(parse_osc_sequence("6973;PE"), Some(OscEvent::PromptEnded));
-    assert_eq!(
-        parse_osc_sequence("6973;CWD;C:\\Users\\test"),
-        Some(OscEvent::Cwd("C:\\Users\\test".to_string()))
-    );
+fn test_unknown_messages_are_ignored() {
     assert_eq!(parse_osc_sequence("1337;Other"), None);
     assert_eq!(parse_osc_sequence("6973;UNKNOWN"), None);
+    assert_eq!(parse_osc_sequence("6973;PS"), None); // protocol v1
     assert_eq!(parse_osc_sequence(""), None);
-    assert_eq!(
-        parse_osc_sequence("6973;CWD;"),
-        Some(OscEvent::Cwd("".to_string()))
-    );
 }
 
 #[test]
@@ -42,51 +33,38 @@ fn test_unescape_value_utf8_multibyte() {
     assert_eq!(unescape_value(r"C:\path\xZ1"), r"C:\path\xZ1");
 }
 
-#[test]
-fn test_parse_osc_with_escapes() {
-    assert_eq!(
-        parse_osc_sequence(r"6973;CWD;C:\\Users\\john\x3bdoe"),
-        Some(OscEvent::Cwd(r"C:\Users\john;doe".to_string()))
-    );
-    assert_eq!(
-        parse_osc_sequence(r"6973;CWD;D:\\proj\x5csubdir"),
-        Some(OscEvent::Cwd(r"D:\proj\subdir".to_string()))
-    );
-}
+use shell_panel::shell::report::{ShellMatch, ShellReport};
 
 #[test]
-fn test_command_state_handle_osc() {
+fn test_command_state_follows_readline_markers() {
     let mut state = CommandState::default();
-    assert_eq!(state.prompt_line, None);
-    assert_eq!(state.prompt_end_x, None);
-    assert!(!state.in_prompt);
+    assert!(!state.reading_line);
 
-    state.handle_osc(OscEvent::Cwd("C:\\Project".to_string()), 0, 0);
+    state.handle_osc(OscEvent::ReadLineStarted {
+        cwd: Some("C:\\Project".into()),
+    });
+    assert!(state.reading_line);
     assert_eq!(state.cwd, "C:\\Project");
 
-    // Multi-line prompt starts at row 2, ends at row 4
-    state.handle_osc(OscEvent::PromptStarted, 2, 0);
-    assert!(state.in_prompt);
-    assert!(!state.has_output);
-    assert_eq!(state.prompt_line, Some(2));
-    assert_eq!(state.prompt_end_x, None);
+    // A non-filesystem location (e.g. HKLM:) keeps the last filesystem cwd.
+    state.handle_osc(OscEvent::ReadLineStarted { cwd: None });
+    assert_eq!(state.cwd, "C:\\Project");
 
-    state.command_text = "partial".to_string();
+    let report = ShellReport {
+        line: "git".into(),
+        cursor: 3,
+        replacement_index: 0,
+        replacement_length: 3,
+        matches: vec![],
+    };
+    state.handle_osc(OscEvent::Report(report.clone()));
+    assert_eq!(state.report, Some(report));
 
-    state.handle_osc(OscEvent::PromptEnded, 4, 15);
-    assert!(!state.in_prompt);
-    assert_eq!(state.prompt_line, Some(4)); // updated to actual input line
-    assert_eq!(state.prompt_end_x, Some(15));
-
-    // Next prompt clears command_text and updates prompt_line
-    state.handle_osc(OscEvent::PromptStarted, 5, 0);
-    assert!(state.in_prompt);
-    assert_eq!(state.prompt_line, Some(5));
-    assert_eq!(state.prompt_end_x, None);
-    assert!(state.command_text.is_empty());
+    state.handle_osc(OscEvent::ReadLineEnded);
+    assert!(!state.reading_line);
+    state.handle_osc(OscEvent::ReadLineStarted { cwd: None });
+    assert_eq!(state.report, None);
 }
-
-use shell_panel::shell::report::{ShellMatch, ShellReport};
 
 #[test]
 fn test_parse_readline_markers() {

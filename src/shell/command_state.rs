@@ -1,34 +1,29 @@
 use crate::shell::osc::OscEvent;
+use crate::shell::report::ShellReport;
 
+/// What shell-panel knows about the shell from its integration messages.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct CommandState {
-    pub prompt_line: Option<u16>,
-    pub prompt_end_x: Option<u16>,
+    /// Current filesystem location of the shell.
     pub cwd: String,
-    pub command_text: String,
-    pub in_prompt: bool,
-    pub has_output: bool,
+    /// True while PSReadLine is reading a line: the only time the report request is answered.
+    pub reading_line: bool,
+    /// Latest completion report, taken by the reactor loop.
+    pub report: Option<ShellReport>,
 }
 
 impl CommandState {
-    pub fn handle_osc(&mut self, event: OscEvent, current_cursor_y: u16, current_cursor_x: u16) {
+    pub fn handle_osc(&mut self, event: OscEvent) {
         match event {
-            OscEvent::PromptStarted => {
-                self.in_prompt = true;
-                self.has_output = false;
-                self.prompt_line = Some(current_cursor_y);
-                self.prompt_end_x = None;
-                self.command_text.clear();
+            OscEvent::ReadLineStarted { cwd } => {
+                self.reading_line = true;
+                self.report = None;
+                if let Some(cwd) = cwd {
+                    self.cwd = cwd;
+                }
             }
-            OscEvent::PromptEnded => {
-                self.in_prompt = false;
-                self.prompt_line = Some(current_cursor_y);
-                self.prompt_end_x = Some(current_cursor_x);
-            }
-            OscEvent::Cwd(cwd) => {
-                self.cwd = cwd;
-            }
-            OscEvent::ReadLineStarted { .. } | OscEvent::ReadLineEnded | OscEvent::Report(_) => {}
+            OscEvent::ReadLineEnded => self.reading_line = false,
+            OscEvent::Report(report) => self.report = Some(report),
         }
     }
 }

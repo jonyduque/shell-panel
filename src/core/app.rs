@@ -1,31 +1,87 @@
-use std::collections::HashSet;
 use std::io::{Read, Write};
 use std::time::Duration;
 
 use anyhow::Result;
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
 use futures_util::StreamExt;
 use portable_pty::PtySize;
+use tokio::time::Instant;
 
 use crate::core::config::Config;
-use crate::engine::aggregate::should_include_files;
-use crate::engine::lexer::lex_command_line;
-use crate::engine::provider::CompletionProvider;
-use crate::engine::providers::carapace::CarapaceProvider;
-use crate::engine::providers::files::FileProvider;
+use crate::engine::aggregate::{plan_replacement, CompletionEngine};
+use crate::engine::provider::Suggestion;
 use crate::engine::providers::json_spec::{FigOption, FigSpec, FigSubcommand, JsonSpecProvider};
-use crate::engine::providers::powershell::PowerShellProvider;
-use crate::engine::providers::zoxide::ZoxideProvider;
-use crate::engine::replacement::calculate_replacement;
-use crate::io::filter::sanitize_output_stream;
 use crate::io::key_event::{classify_key, encode_key_event, ActionKey};
 use crate::io::raw_mode::RawModeGuard;
 use crate::pty::conpty::{watch_exit, ConPtySession, SpawnOptions};
 use crate::pty::shell::detect_shell;
 use crate::shell::command_state::CommandState;
-use crate::shell::osc::parse_osc_sequence;
+use crate::shell::osc::REPORT_REQUEST_KEY;
+use crate::shell::report::ShellReport;
+use crate::shell::stream::ingest_pty_chunk;
 use crate::ui::renderer::{DropdownLayout, Renderer};
 use crate::ui::suggestion_state::SuggestionState;
+use crate::ui::theme::Theme;
 use crate::vt::emulator::HeadlessTerminal;
+
+/// How long Tab waits for the shell's report before it is handed to PowerShell unchanged.
+/// PowerShell's own completion can take seconds when it has to load a module.
+const REPORT_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Result of a background completion, tagged with the key generation that requested it.
+struct CompletionOutcome {
+    generation: u64,
+    report: ShellReport,
+    results: Vec<Suggestion>,
+}
+
+/// The dropdown on screen together with the report its suggestions were computed for.
+struct Dropdown {
+    state: SuggestionState,
+    layout: Option<DropdownLayout>,
+    report: Option<ShellReport>,
+}
+
+impl Dropdown {
+    fn is_open(&self) -> bool {
+        self.state.visible
+    }
+
+    fn draw<W: Write>(&mut self, term: &HeadlessTerminal, theme: &Theme, out: &mut W) {
+        let (cx, cy) = term.cursor_position();
+        self.layout = Renderer::render_dropdown(&self.state, term, theme, cx, cy, out)
+            .ok()
+            .flatten();
+    }
+
+    fn open<W: Write>(
+        &mut self,
+        report: ShellReport,
+        results: Vec<Suggestion>,
+        term: &HeadlessTerminal,
+        theme: &Theme,
+        out: &mut W,
+    ) {
+        self.report = Some(report);
+        self.state.set_suggestions(results);
+        self.draw(term, theme, out);
+    }
+
+    /// Restores the covered rows. Must run before new output reaches `term`.
+    fn close<W: Write>(&mut self, term: &HeadlessTerminal, out: &mut W) {
+        if let Some(layout) = self.layout.take() {
+            let _ = Renderer::clear_dropdown(&layout, term, out);
+        }
+        self.state.dismiss();
+    }
+}
+
+fn write_to_pty<W: Write>(writer: &mut W, bytes: &[u8]) {
+    if !bytes.is_empty() {
+        let _ = writer.write_all(bytes);
+        let _ = writer.flush();
+    }
+}
 
 /// Builds the default `JsonSpecProvider` pre-populated with git and docker specs.
 pub fn default_json_spec_provider() -> JsonSpecProvider {
@@ -482,99 +538,16 @@ pub fn default_docker_spec() -> FigSpec {
     }
 }
 
-/// Helper function to scan OSC sequences from PTY output chunks,
-/// process VT bytes incrementally up to OSC boundaries to track exact cursor position,
-/// handle command state transitions, and return clean terminal bytes with OSC 6973 stripped.
-fn scan_and_handle_osc(
-    data: &[u8],
-    term: &mut HeadlessTerminal,
-    command_state: &mut CommandState,
-    residual: &mut Vec<u8>,
-) -> Vec<u8> {
-    let mut clean_output = Vec::with_capacity(data.len());
-    let mut i = 0;
-    let mut last = 0;
-
-    while i < data.len() {
-        if data[i..].starts_with(b"\x1b]6973;") {
-            if i > last {
-                let slice = &data[last..i];
-                term.process(slice);
-                clean_output.extend_from_slice(slice);
-            }
-            let payload_start = i + 2; // skip '\x1b]'
-            let mut j = i + 7; // after '\x1b]6973;'
-            let mut term_len = 0;
-
-            while j < data.len() {
-                if data[j] == 0x07 {
-                    term_len = 1;
-                    break;
-                }
-                if data[j..].starts_with(b"\x1b\\") {
-                    term_len = 2;
-                    break;
-                }
-                j += 1;
-            }
-
-            if term_len > 0 {
-                let payload = &data[payload_start..j];
-                if let Ok(payload_str) = std::str::from_utf8(payload) {
-                    if let Some(event) = parse_osc_sequence(payload_str) {
-                        let (cx, cy) = term.cursor_position();
-                        command_state.handle_osc(event, cy, cx);
-                    }
-                }
-                i = j + term_len;
-                last = i;
-            } else {
-                // Unterminated OSC sequence at chunk boundary: buffer for next chunk
-                residual.extend_from_slice(&data[i..]);
-                return clean_output;
-            }
-        } else {
-            i += 1;
-        }
-    }
-
-    if last < data.len() {
-        let tail = &data[last..];
-        let osc_prefix = b"\x1b]6973;";
-        let mut prefix_matched = 0;
-        for len in (1..=osc_prefix.len().min(tail.len())).rev() {
-            if tail.ends_with(&osc_prefix[..len]) {
-                prefix_matched = len;
-                break;
-            }
-        }
-        if prefix_matched > 0 {
-            let safe_len = tail.len() - prefix_matched;
-            if safe_len > 0 {
-                let slice = &tail[..safe_len];
-                term.process(slice);
-                clean_output.extend_from_slice(slice);
-            }
-            residual.extend_from_slice(&tail[safe_len..]);
-        } else {
-            term.process(tail);
-            clean_output.extend_from_slice(tail);
-        }
-    }
-
-    clean_output
-}
-
 pub struct App {
     pub config: Config,
-    pub theme: crate::ui::theme::Theme,
+    pub theme: Theme,
     pub override_shell: Option<String>,
     pub no_profile: bool,
 }
 
 impl App {
     pub fn new(config: Config, override_shell: Option<String>) -> Self {
-        let theme = crate::ui::theme::Theme::from_config(&config);
+        let theme = Theme::from_config(&config);
         Self {
             config,
             theme,
@@ -604,49 +577,44 @@ impl App {
         let (pty_tx, mut pty_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(1024);
         std::thread::spawn(move || {
             let mut buf = [0u8; 4096];
-            loop {
-                match pty_reader.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        if pty_tx.blocking_send(buf[..n].to_vec()).is_err() {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
+            while let Ok(n) = pty_reader.read(&mut buf) {
+                if n == 0 || pty_tx.blocking_send(buf[..n].to_vec()).is_err() {
+                    break;
                 }
             }
         });
 
         let mut term = HeadlessTerminal::new(cols, rows);
         let mut command_state = CommandState::default();
-        let mut suggestion_state = SuggestionState::new(self.config.max_suggestions);
+        let mut dropdown = Dropdown {
+            state: SuggestionState::new(self.config.max_suggestions),
+            layout: None,
+            report: None,
+        };
+        let engine = CompletionEngine::new(default_json_spec_provider());
+        let (completion_tx, mut completion_rx) = tokio::sync::mpsc::channel::<CompletionOutcome>(4);
 
-        let file_provider = FileProvider::new();
-        let json_spec_provider = default_json_spec_provider();
-        let zoxide_provider = ZoxideProvider::default();
-        let carapace_provider = CarapaceProvider::default();
-        let powershell_provider = PowerShellProvider::new(shell_type);
-
-        let mut dropdown_layout: Option<DropdownLayout> = None;
         let mut event_stream = crossterm::event::EventStream::new();
         let mut stdout = std::io::stdout();
         let mut osc_residual: Vec<u8> = Vec::new();
+        // Bumped by every key press: reports and results of an older generation are stale.
+        let mut generation: u64 = 0;
+        // Deadline of the report requested by the last Tab, while it is outstanding.
+        let mut report_deadline: Option<Instant> = None;
         let mut exit_code: Option<u32> = None;
 
         loop {
+            let deadline = report_deadline.unwrap_or_else(Instant::now);
+
             tokio::select! {
-                // Shell process exit
                 code = &mut exit_rx => {
                     // The shell's last output may still be in flight: drain until the PTY is quiet.
-                    let drain_until = tokio::time::Instant::now() + Duration::from_secs(1);
+                    let drain_until = Instant::now() + Duration::from_secs(1);
                     while let Ok(Some(chunk)) = tokio::time::timeout_at(
-                        drain_until.min(tokio::time::Instant::now() + Duration::from_millis(100)),
+                        drain_until.min(Instant::now() + Duration::from_millis(100)),
                         pty_rx.recv(),
                     ).await {
-                        let mut data = std::mem::take(&mut osc_residual);
-                        data.extend_from_slice(&chunk);
-                        let sanitized = sanitize_output_stream(&data);
-                        let clean = scan_and_handle_osc(&sanitized, &mut term, &mut command_state, &mut osc_residual);
+                        let clean = ingest_pty_chunk(&chunk, &mut term, &mut command_state, &mut osc_residual);
                         let _ = stdout.write_all(&clean);
                     }
                     let _ = stdout.flush();
@@ -654,44 +622,48 @@ impl App {
                     break;
                 }
 
-                // PTY Output chunk
                 chunk = pty_rx.recv() => {
-                    let chunk = match chunk {
-                        Some(c) => c,
-                        None => break,
-                    };
-
-                    // Combine with any previous unterminated OSC residual
-                    let mut data_to_process = std::mem::take(&mut osc_residual);
-                    data_to_process.extend_from_slice(&chunk);
-
-                    // Restore the covered rows from the mirror as it was when they were covered; output that scrolls would otherwise be applied twice.
-                    if let Some(layout) = dropdown_layout.take() {
-                        let _ = Renderer::clear_dropdown(&layout, &term, &mut stdout);
-                        suggestion_state.dismiss();
-                    }
-
-                    // 1. Strip Win32 / Kitty sequences
-                    let sanitized = sanitize_output_stream(&data_to_process);
-
-                    // 2. Scan OSC sequences, update terminal and command state, and get clean terminal bytes (OSC 6973 stripped)
-                    let clean = scan_and_handle_osc(&sanitized, &mut term, &mut command_state, &mut osc_residual);
-
-                    // 3. Print clean bytes to stdout (no internal OSC sequences leak to host) and flush
+                    let Some(chunk) = chunk else { break };
+                    // Restore the covered rows from the mirror as it was when they were covered;
+                    // output that scrolls would otherwise be applied twice.
+                    dropdown.close(&term, &mut stdout);
+                    let clean = ingest_pty_chunk(&chunk, &mut term, &mut command_state, &mut osc_residual);
                     if !clean.is_empty() {
                         let _ = stdout.write_all(&clean);
                         let _ = stdout.flush();
                     }
 
-                    // 4. If NOT in alternate buffer and prompt ended (!command_state.in_prompt):
-                    if !term.is_alternate_buffer() && !command_state.in_prompt {
-                        if let (Some(p_row), Some(p_col)) = (command_state.prompt_line, command_state.prompt_end_x) {
-                            command_state.command_text = term.extract_command_text(p_row, p_col);
+                    if let Some(report) = command_state.report.take() {
+                        // Only the answer to the latest Tab is wanted.
+                        if report_deadline.take().is_some() {
+                            let engine = engine.clone();
+                            let cwd = command_state.cwd.clone();
+                            let tx = completion_tx.clone();
+                            tokio::spawn(async move {
+                                let results = engine.complete(&report, &cwd).await;
+                                let _ = tx.send(CompletionOutcome { generation, report, results }).await;
+                            });
                         }
                     }
                 }
 
-                // Host Key / Terminal Events
+                Some(outcome) = completion_rx.recv() => {
+                    if outcome.generation != generation {
+                        continue;
+                    }
+                    match outcome.results.as_slice() {
+                        [] => write_to_pty(&mut pty_writer, b"\t"),
+                        [only] => write_to_pty(&mut pty_writer, &plan_replacement(&outcome.report, only).to_bytes()),
+                        _ => dropdown.open(outcome.report, outcome.results, &term, &self.theme, &mut stdout),
+                    }
+                }
+
+                _ = tokio::time::sleep_until(deadline), if report_deadline.is_some() => {
+                    // No report: the chord was not bound or PowerShell is busy. Plain Tab.
+                    report_deadline = None;
+                    write_to_pty(&mut pty_writer, b"\t");
+                }
+
                 maybe_event = event_stream.next() => {
                     let event = match maybe_event {
                         Some(Ok(ev)) => ev,
@@ -699,171 +671,23 @@ impl App {
                     };
 
                     match event {
-                        crossterm::event::Event::Resize(new_cols, new_rows) => {
+                        Event::Resize(new_cols, new_rows) => {
+                            dropdown.close(&term, &mut stdout);
                             let _ = pair.master.resize(PtySize { rows: new_rows, cols: new_cols, pixel_width: 0, pixel_height: 0 });
                             term.resize(new_cols, new_rows);
-                            if let Some(layout) = dropdown_layout.take() {
-                                let _ = Renderer::clear_dropdown(&layout, &term, &mut stdout);
-                            }
-                            suggestion_state.dismiss();
                         }
-                        crossterm::event::Event::Key(key_event) => {
-                            if key_event.kind == crossterm::event::KeyEventKind::Release {
-                                continue;
-                            }
-
-                            match classify_key(&key_event) {
-                                ActionKey::MenuDown => {
-                                    if suggestion_state.visible {
-                                        suggestion_state.move_down();
-                                        let (cx, cy) = term.cursor_position();
-                                        dropdown_layout = Renderer::render_dropdown(&suggestion_state, &term, &self.theme, cx, cy, &mut stdout).ok().flatten();
-                                    } else {
-                                        let encoded = encode_key_event(&key_event);
-                                        if !encoded.is_empty() {
-                                            let _ = pty_writer.write_all(&encoded);
-                                            let _ = pty_writer.flush();
-                                        }
-                                    }
-                                }
-                                ActionKey::MenuUp => {
-                                    if suggestion_state.visible {
-                                        suggestion_state.move_up();
-                                        let (cx, cy) = term.cursor_position();
-                                        dropdown_layout = Renderer::render_dropdown(&suggestion_state, &term, &self.theme, cx, cy, &mut stdout).ok().flatten();
-                                    } else {
-                                        let encoded = encode_key_event(&key_event);
-                                        if !encoded.is_empty() {
-                                            let _ = pty_writer.write_all(&encoded);
-                                            let _ = pty_writer.flush();
-                                        }
-                                    }
-                                }
-                                ActionKey::DismissMenu => {
-                                    if suggestion_state.visible {
-                                        if let Some(layout) = dropdown_layout.take() {
-                                            let _ = Renderer::clear_dropdown(&layout, &term, &mut stdout);
-                                        }
-                                        suggestion_state.dismiss();
-                                    } else {
-                                        let encoded = encode_key_event(&key_event);
-                                        if !encoded.is_empty() {
-                                            let _ = pty_writer.write_all(&encoded);
-                                            let _ = pty_writer.flush();
-                                        }
-                                    }
-                                }
-                                ActionKey::AcceptSuggestion => {
-                                    if suggestion_state.visible {
-                                        let selected_name = suggestion_state.active_item().map(|s| s.name.clone());
-                                        if let Some(layout) = dropdown_layout.take() {
-                                            let _ = Renderer::clear_dropdown(&layout, &term, &mut stdout);
-                                        }
-                                        suggestion_state.dismiss();
-
-                                        if let Some(selected_name) = selected_name {
-                                            let tokens = lex_command_line(&command_state.command_text);
-                                            let active_token_text = tokens.last().map(|t| t.text.as_str()).unwrap_or("");
-                                            let replacement = calculate_replacement(active_token_text, &selected_name);
-                                            let _ = pty_writer.write_all(&replacement.to_bytes());
-                                            let _ = pty_writer.flush();
-                                        }
-                                    } else {
-                                        if let (Some(p_row), Some(p_col)) = (command_state.prompt_line, command_state.prompt_end_x) {
-                                            command_state.command_text = term.extract_command_text(p_row, p_col);
-                                        }
-
-                                        if command_state.command_text.trim().is_empty() {
-                                            let _ = pty_writer.write_all(b"\t");
-                                            let _ = pty_writer.flush();
-                                        } else {
-                                            let tokens = lex_command_line(&command_state.command_text);
-                                            let root_cmd = tokens.first().map(|t| t.text.as_str()).unwrap_or("");
-                                            let active_token_text = tokens.last().map(|t| t.text.as_str()).unwrap_or("");
-
-                                            let json_sugs = if json_spec_provider.can_handle(root_cmd) {
-                                                json_spec_provider.complete(&command_state.command_text, &command_state.cwd).await
-                                            } else {
-                                                Vec::new()
-                                            };
-
-                                            let zoxide_sugs = if zoxide_provider.can_handle(root_cmd) {
-                                                zoxide_provider.complete(&command_state.command_text, &command_state.cwd).await
-                                            } else {
-                                                Vec::new()
-                                            };
-
-                                            let carapace_sugs = if json_sugs.is_empty() && carapace_provider.can_handle(root_cmd) {
-                                                carapace_provider.complete(&command_state.command_text, &command_state.cwd).await
-                                            } else {
-                                                Vec::new()
-                                            };
-
-                                            let ps_sugs = if json_sugs.is_empty() && powershell_provider.can_handle(root_cmd) {
-                                                powershell_provider.complete(&command_state.command_text, &command_state.cwd).await
-                                            } else {
-                                                Vec::new()
-                                            };
-
-                                            let include_files = should_include_files(
-                                                active_token_text,
-                                                json_sugs.iter().chain(carapace_sugs.iter()).chain(ps_sugs.iter()),
-                                            );
-
-                                            let file_sugs = if include_files && file_provider.can_handle(root_cmd) {
-                                                file_provider.complete(&command_state.command_text, &command_state.cwd).await
-                                            } else {
-                                                Vec::new()
-                                            };
-
-                                            let mut results = Vec::with_capacity(
-                                                json_sugs.len() + zoxide_sugs.len() + carapace_sugs.len() + ps_sugs.len() + file_sugs.len(),
-                                            );
-                                            results.extend(json_sugs);
-                                            results.extend(zoxide_sugs);
-                                            results.extend(carapace_sugs);
-                                            results.extend(ps_sugs);
-                                            results.extend(file_sugs);
-
-                                            results.sort_by(|a, b| b.priority.cmp(&a.priority).then_with(|| a.name.cmp(&b.name)));
-                                            let mut seen = HashSet::new();
-                                            results.retain(|s| seen.insert(s.name.clone()));
-
-                                            if results.is_empty() {
-                                                let _ = pty_writer.write_all(b"\t");
-                                                let _ = pty_writer.flush();
-                                            } else if results.len() == 1 {
-                                                let replacement = calculate_replacement(active_token_text, &results[0].name);
-                                                let _ = pty_writer.write_all(&replacement.to_bytes());
-                                                let _ = pty_writer.flush();
-                                            } else {
-                                                suggestion_state.set_suggestions(results);
-                                                let (cx, cy) = term.cursor_position();
-                                                dropdown_layout = Renderer::render_dropdown(&suggestion_state, &term, &self.theme, cx, cy, &mut stdout).ok().flatten();
-                                            }
-                                        }
-                                    }
-                                }
-                                ActionKey::Passthrough => {
-                                    if suggestion_state.visible {
-                                        if let Some(layout) = dropdown_layout.take() {
-                                            let _ = Renderer::clear_dropdown(&layout, &term, &mut stdout);
-                                        }
-                                        suggestion_state.dismiss();
-                                    }
-
-                                    if key_event.code == crossterm::event::KeyCode::Enter {
-                                        command_state.command_text.clear();
-                                        command_state.prompt_end_x = None;
-                                    }
-
-                                    let encoded = encode_key_event(&key_event);
-                                    if !encoded.is_empty() {
-                                        let _ = pty_writer.write_all(&encoded);
-                                        let _ = pty_writer.flush();
-                                    }
-                                }
-                            }
+                        Event::Key(key_event) if key_event.kind != KeyEventKind::Release => {
+                            generation += 1;
+                            report_deadline = None;
+                            self.handle_key(
+                                &key_event,
+                                &mut dropdown,
+                                &term,
+                                &command_state,
+                                &mut pty_writer,
+                                &mut stdout,
+                                &mut report_deadline,
+                            );
                         }
                         _ => {}
                     }
@@ -871,11 +695,7 @@ impl App {
             }
         }
 
-        // Clean up on exit
-        if let Some(layout) = dropdown_layout.take() {
-            let _ = Renderer::clear_dropdown(&layout, &term, &mut stdout);
-        }
-
+        dropdown.close(&term, &mut stdout);
         drop(_raw_guard);
         let exit_code = match exit_code {
             Some(code) => code,
@@ -887,5 +707,57 @@ impl App {
                 .unwrap_or(1),
         };
         Ok(exit_code)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn handle_key<W: Write, O: Write>(
+        &self,
+        key_event: &KeyEvent,
+        dropdown: &mut Dropdown,
+        term: &HeadlessTerminal,
+        command_state: &CommandState,
+        pty_writer: &mut W,
+        stdout: &mut O,
+        report_deadline: &mut Option<Instant>,
+    ) {
+        let action = classify_key(key_event);
+
+        if dropdown.is_open() {
+            match action {
+                ActionKey::MenuDown => {
+                    dropdown.state.move_down();
+                    dropdown.draw(term, &self.theme, stdout);
+                }
+                ActionKey::MenuUp => {
+                    dropdown.state.move_up();
+                    dropdown.draw(term, &self.theme, stdout);
+                }
+                ActionKey::DismissMenu => dropdown.close(term, stdout),
+                ActionKey::AcceptSuggestion => {
+                    let selected = dropdown.state.active_item().cloned();
+                    dropdown.close(term, stdout);
+                    if let (Some(report), Some(selected)) = (dropdown.report.take(), selected) {
+                        write_to_pty(pty_writer, &plan_replacement(&report, &selected).to_bytes());
+                    }
+                }
+                ActionKey::Passthrough => {
+                    dropdown.close(term, stdout);
+                    write_to_pty(pty_writer, &encode_key_event(key_event));
+                }
+            }
+            return;
+        }
+
+        let completes = action == ActionKey::AcceptSuggestion
+            && key_event.code == KeyCode::Tab
+            && command_state.reading_line
+            && !term.is_alternate_buffer();
+        if completes {
+            // Only PSReadLine answers the request, and it is reading right now.
+            write_to_pty(pty_writer, REPORT_REQUEST_KEY);
+            *report_deadline = Some(Instant::now() + REPORT_TIMEOUT);
+        } else {
+            write_to_pty(pty_writer, &encode_key_event(key_event));
+        }
     }
 }

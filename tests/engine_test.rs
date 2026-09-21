@@ -1,12 +1,8 @@
-use std::fs::{create_dir_all, remove_dir_all, File};
-use std::io::Write;
-
 use shell_panel::engine::lexer::lex_command_line;
 use shell_panel::engine::provider::{CompletionProvider, SuggestionKind};
 use shell_panel::engine::providers::carapace::{
     carapace_args, parse_carapace_json, CarapaceProvider,
 };
-use shell_panel::engine::providers::files::FileProvider;
 use shell_panel::engine::providers::json_spec::{FigSpec, JsonSpecProvider};
 use shell_panel::engine::providers::zoxide::{
     parse_zoxide_output, quote_for_powershell, ZoxideProvider,
@@ -135,74 +131,6 @@ fn test_calculate_replacement_fuzzy_and_unicode() {
             insert_text: "こんにちは ".to_string(),
         }
     );
-}
-
-// =========================================================================
-// 2. FileProvider Tests
-// =========================================================================
-
-#[tokio::test]
-async fn test_file_provider_listing() {
-    let temp_dir = std::env::temp_dir().join(format!(
-        "shell_panel_test_{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-
-    create_dir_all(&temp_dir).unwrap();
-    create_dir_all(temp_dir.join("subfolder")).unwrap();
-    File::create(temp_dir.join("file1.txt"))
-        .unwrap()
-        .write_all(b"test1")
-        .unwrap();
-    File::create(temp_dir.join("file2.log"))
-        .unwrap()
-        .write_all(b"test2")
-        .unwrap();
-    File::create(temp_dir.join("subfolder").join("nested.rs"))
-        .unwrap()
-        .write_all(b"fn main() {}")
-        .unwrap();
-
-    let provider = FileProvider::new();
-    assert_eq!(provider.name(), "files");
-    assert!(provider.can_handle("anything"));
-
-    let temp_dir_str = temp_dir.to_str().unwrap();
-
-    // Listing all entries in directory
-    let suggestions = provider.complete("cat ", temp_dir_str).await;
-    assert_eq!(suggestions.len(), 3);
-
-    // Directory has priority 60 and ends with /
-    let subfolder_sug = suggestions.iter().find(|s| s.name.starts_with("subfolder"));
-    assert!(subfolder_sug.is_some());
-    let subfolder = subfolder_sug.unwrap();
-    assert_eq!(subfolder.priority, 60);
-    assert_eq!(subfolder.name, "subfolder/");
-    assert_eq!(subfolder.description, Some("Directory".into()));
-    assert_eq!(subfolder.kind, SuggestionKind::Directory);
-
-    // Files have priority 50
-    let file1_sug = suggestions.iter().find(|s| s.name == "file1.txt").unwrap();
-    assert_eq!(file1_sug.priority, 50);
-    assert_eq!(file1_sug.kind, SuggestionKind::File);
-
-    // Filter by prefix "file"
-    let file_filtered = provider.complete("cat file", temp_dir_str).await;
-    assert_eq!(file_filtered.len(), 2);
-    assert!(file_filtered.iter().any(|s| s.name == "file1.txt"));
-    assert!(file_filtered.iter().any(|s| s.name == "file2.log"));
-
-    // Filter subfolder contents with path prefix
-    let subfolder_completions = provider.complete("cat subfolder/", temp_dir_str).await;
-    assert_eq!(subfolder_completions.len(), 1);
-    assert_eq!(subfolder_completions[0].name, "subfolder/nested.rs");
-
-    // Clean up
-    let _ = remove_dir_all(&temp_dir);
 }
 
 // =========================================================================

@@ -47,11 +47,17 @@ fn test_tab_inserts_single_match_opens_dropdown_and_exit_code_propagates() {
         term.screen()
     );
 
-    term.send(b"\x1b"); // Esc: PSReadLine reverts the line
-    term.send(b"git ");
-    // Wait until the mirror shows exactly the new line: the old `git status` also contains `> git`.
+    // Esc: PSReadLine reverts the line. Wait for the revert, so that the next wait cannot
+    // match the stale `git status`.
+    term.send(b"\x1b");
     assert!(
-        term.wait_until(STEP, |t| t.screen().trim_end().ends_with("> git")),
+        term.wait_until(STEP, |t| !t.screen().contains("git")),
+        "line not reverted: {}",
+        term.screen()
+    );
+    term.send(b"git ");
+    assert!(
+        term.wait_for_text("> git", STEP),
         "screen: {}",
         term.screen()
     );
@@ -74,4 +80,93 @@ fn test_tab_inserts_single_match_opens_dropdown_and_exit_code_propagates() {
     term.send(b"\x1b");
     term.send(b"exit 5\r");
     assert_eq!(term.wait_exit(STEP), Some(5));
+}
+
+#[test]
+fn test_completion_uses_the_real_line_and_the_real_session() {
+    let dir = temp_dir("session");
+    std::fs::write(dir.join("zz_unique_file.txt"), "x").unwrap();
+    std::fs::create_dir_all(dir.join("Zq Folder")).unwrap();
+    let mut term = Terminal::shell_panel(&dir);
+    assert!(term.wait_for_text("PS ", START));
+
+    // `>` inside the command used to cut the scraped line.
+    term.send(b"echo a > zz_uni");
+    assert!(term.wait_for_text("zz_uni", STEP));
+    term.send(b"\t");
+    assert!(
+        term.wait_for_text("zz_unique_file.txt", STEP),
+        "screen: {}",
+        term.screen()
+    );
+    term.send(b"\x1b");
+
+    // A variable that exists only in this session.
+    term.send(b"$sp_e2e_var_zz = 1\r");
+    term.send(b"$sp_e2e_v");
+    assert!(term.wait_for_text("$sp_e2e_v", STEP));
+    term.send(b"\t");
+    assert!(
+        term.wait_for_text("$sp_e2e_var_zz", STEP),
+        "screen: {}",
+        term.screen()
+    );
+    term.send(b"\x1b");
+
+    // Names with spaces arrive quoted from PowerShell.
+    // (An unusual name, so that zoxide history cannot add a second match.)
+    term.send(b"cd Zq");
+    assert!(term.wait_for_text("cd Zq", STEP));
+    term.send(b"\t");
+    assert!(
+        term.wait_for_text(r"'.\Zq Folder'", STEP),
+        "screen: {}",
+        term.screen()
+    );
+    term.send(b"\x1b");
+
+    // Completion in the middle of the line replaces the whole token: PowerShell's replacement
+    // range reaches past the cursor, so the trailing `e` is deleted instead of left behind.
+    term.send(b"Get-ChildIte");
+    assert!(term.wait_for_text("Get-ChildIte", STEP));
+    term.send(b"\x1b[D"); // cursor before the final `e`
+    term.send(b"\t");
+    assert!(
+        term.wait_until(STEP, |t| t.screen().contains("Get-ChildItem")
+            && !t.screen().contains("Get-ChildItem e")),
+        "screen: {}",
+        term.screen()
+    );
+
+    term.send(b"\x1b");
+    term.send(b"exit\r");
+    assert_eq!(term.wait_exit(STEP), Some(0));
+}
+
+#[test]
+fn test_tab_outside_psreadline_is_a_plain_tab() {
+    let dir = temp_dir("readhost");
+    let mut term = Terminal::shell_panel(&dir);
+    assert!(term.wait_for_text("PS ", START));
+
+    term.send(b"$v = Read-Host 'name'\r");
+    assert!(term.wait_for_text("name:", STEP));
+    term.send(b"a\tb\r");
+    // Read-Host may keep or drop the Tab, but the reserved chord (`[24;8~`) must never reach it.
+    // (The answer is built by concatenation so the echoed command line cannot match.)
+    term.send(b"if ($v -match '^a\\s*b$') { 'TAB-' + 'CLEAN' } else { 'TAB-' + 'DIRTY' }\r");
+    assert!(
+        term.wait_until(STEP, |t| t.screen().contains("TAB-CLEAN")
+            || t.screen().contains("TAB-DIRTY")),
+        "screen: {}",
+        term.screen()
+    );
+    assert!(
+        term.screen().contains("TAB-CLEAN"),
+        "screen: {}",
+        term.screen()
+    );
+
+    term.send(b"exit\r");
+    assert_eq!(term.wait_exit(STEP), Some(0));
 }

@@ -1,8 +1,6 @@
 use shell_panel::engine::aggregate::should_include_files;
-use shell_panel::engine::provider::{CompletionProvider, Suggestion, SuggestionKind};
-use shell_panel::engine::providers::PowerShellProvider;
+use shell_panel::engine::provider::{Suggestion, SuggestionKind};
 use shell_panel::engine::replacement::calculate_replacement;
-use shell_panel::pty::shell::ShellType;
 
 #[test]
 fn test_replacement_action_calculation() {
@@ -117,25 +115,4 @@ fn test_file_provider_gating_logic_without_gating_suggestions() {
     let other_sugs =
         vec![Suggestion::new("$env:PATH", "$env:PATH", None, 70).with_kind(SuggestionKind::Other)];
     assert!(should_include_files("PATH", &other_sugs));
-}
-
-#[tokio::test]
-async fn test_powershell_provider_in_tab_trigger() {
-    let provider = PowerShellProvider::new(ShellType::Pwsh);
-    let sugs = provider.complete("Get-Ch", "").await;
-    assert!(
-        sugs.iter()
-            .any(|s| s.name.eq_ignore_ascii_case("Get-ChildItem")),
-        "Expected Get-ChildItem in completions, got: {:?}",
-        sugs
-    );
-
-    let param_sugs = provider.complete("Get-ChildItem -", "").await;
-    assert!(
-        param_sugs
-            .iter()
-            .any(|s| s.name.eq_ignore_ascii_case("-Path")),
-        "Expected -Path in parameter completions, got: {:?}",
-        param_sugs
-    );
 }

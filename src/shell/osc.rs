@@ -2,13 +2,8 @@ use crate::shell::report::ShellReport;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OscEvent {
-    PromptStarted,
-    PromptEnded,
-    Cwd(String),
     /// PSReadLine started reading a line; `cwd` is set when the location is a filesystem path.
-    ReadLineStarted {
-        cwd: Option<String>,
-    },
+    ReadLineStarted { cwd: Option<String> },
     /// PSReadLine returned the line (it was accepted or cancelled).
     ReadLineEnded,
     /// Answer to [`REPORT_REQUEST_KEY`].
@@ -22,23 +17,11 @@ pub const REPORT_REQUEST_KEY: &[u8] = b"\x1b[24;8~";
 /// Parses an OSC sequence payload according to the 6973 protocol.
 ///
 /// Supported sequences:
-/// - `6973;PS` -> `OscEvent::PromptStarted`
-/// - `6973;PE` -> `OscEvent::PromptEnded`
-/// - `6973;CWD;<escaped_path>` -> `OscEvent::Cwd(unescaped_path)`
 /// - `6973;RS;<escaped_path>` -> `OscEvent::ReadLineStarted`
 /// - `6973;RE` -> `OscEvent::ReadLineEnded`
 /// - `6973;CMP;<escaped_json>` -> `OscEvent::Report`
 pub fn parse_osc_sequence(payload: &str) -> Option<OscEvent> {
     let body = payload.strip_prefix("6973;")?;
-    if body == "PS" {
-        return Some(OscEvent::PromptStarted);
-    }
-    if body == "PE" {
-        return Some(OscEvent::PromptEnded);
-    }
-    if let Some(cwd) = body.strip_prefix("CWD;") {
-        return Some(OscEvent::Cwd(unescape_value(cwd)));
-    }
     if body == "RE" {
         return Some(OscEvent::ReadLineEnded);
     }
