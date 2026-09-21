@@ -1,9 +1,8 @@
 use std::io::Write;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::ui::patch;
 use crate::ui::suggestion_state::SuggestionState;
-use crate::ui::theme::Theme;
+use crate::ui::theme::format_suggestion_line_with_min_width;
 use crate::vt::emulator::HeadlessTerminal;
 
 /// Represents the vertical on-screen layout of an active dropdown menu.
@@ -65,16 +64,8 @@ impl Renderer {
             }
             rendered_rows += 1;
 
-            let prefix = if *selected {
-                Theme::SELECTED_PREFIX
-            } else {
-                Theme::UNSELECTED_PREFIX
-            };
-
-            let styled_line = format_suggestion_line(
-                prefix,
-                &sug.display,
-                sug.description.as_deref(),
+            let styled_line = format_suggestion_line_with_min_width(
+                sug,
                 *selected,
                 target_min_width,
                 available_cols,
@@ -115,88 +106,6 @@ impl Renderer {
 
         Ok(())
     }
-}
-
-/// Helper function to format, style, and pad/truncate a suggestion line.
-fn format_suggestion_line(
-    prefix: &str,
-    display: &str,
-    description: Option<&str>,
-    selected: bool,
-    min_width: usize,
-    max_width: usize,
-) -> String {
-    if max_width == 0 {
-        return String::new();
-    }
-
-    if selected {
-        let mut plain = format!("{}{}", prefix, display);
-        if let Some(desc) = description {
-            plain.push_str("  ");
-            plain.push_str(desc);
-        }
-
-        let plain_width = plain.as_str().width();
-        if plain_width < min_width {
-            plain.push_str(&" ".repeat(min_width - plain_width));
-        }
-        let truncated = truncate_to_width(&plain, max_width);
-        Theme::format_selected(&truncated)
-    } else {
-        let prefix_display = format!("{}{}", prefix, display);
-        let pd_width = prefix_display.as_str().width();
-
-        if let Some(desc) = description {
-            let desc_with_gap = format!("  {}", desc);
-            let desc_width = desc_with_gap.as_str().width();
-            let total_width = pd_width + desc_width;
-
-            if total_width <= max_width {
-                let padding = if total_width < min_width {
-                    " ".repeat(min_width - total_width)
-                } else {
-                    String::new()
-                };
-                format!(
-                    "{}{}{}",
-                    prefix_display,
-                    Theme::format_description(&desc_with_gap),
-                    padding
-                )
-            } else if pd_width < max_width {
-                let allowed_desc = max_width - pd_width;
-                let truncated_desc = truncate_to_width(&desc_with_gap, allowed_desc);
-                format!("{}{}", prefix_display, Theme::format_description(&truncated_desc))
-            } else {
-                truncate_to_width(&prefix_display, max_width)
-            }
-        } else {
-            let mut plain = prefix_display;
-            let p_width = plain.as_str().width();
-            if p_width < min_width {
-                plain.push_str(&" ".repeat(min_width - p_width));
-            }
-            truncate_to_width(&plain, max_width)
-        }
-    }
-}
-
-/// Truncates string so that its visible unicode column width does not exceed `max_width`.
-fn truncate_to_width(s: &str, max_width: usize) -> String {
-    let mut current_width = 0;
-    let mut out = String::new();
-
-    for c in s.chars() {
-        let w = c.width().unwrap_or(0);
-        if current_width + w > max_width {
-            break;
-        }
-        out.push(c);
-        current_width += w;
-    }
-
-    out
 }
 
 /// Top-level helper function forwarding to `Renderer::render_dropdown`.

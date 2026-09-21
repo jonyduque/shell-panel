@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::engine::lexer::lex_command_line;
-use crate::engine::provider::{CompletionProvider, Suggestion};
+use crate::engine::provider::{CompletionProvider, Suggestion, SuggestionKind};
 
 /// File and directory completion provider (filesystem fallback).
 #[derive(Debug, Default, Clone)]
@@ -66,16 +66,22 @@ impl CompletionProvider for FileProvider {
             if is_dir {
                 let name = format!("{}{}/", dir_prefix, file_name);
                 let display = format!("{}{}/", dir_prefix, file_name);
-                suggestions.push(Suggestion::new(
-                    name,
-                    display,
-                    Some("Directory".into()),
-                    60,
-                ));
+                suggestions.push(
+                    Suggestion::new(
+                        name,
+                        display,
+                        Some("Directory".into()),
+                        60,
+                    )
+                    .with_kind(SuggestionKind::Directory),
+                );
             } else {
                 let name = format!("{}{}", dir_prefix, file_name);
                 let display = format!("{}{}", dir_prefix, file_name);
-                suggestions.push(Suggestion::new(name, display, None, 50));
+                suggestions.push(
+                    Suggestion::new(name, display, None, 50)
+                        .with_kind(SuggestionKind::File),
+                );
             }
         }
 

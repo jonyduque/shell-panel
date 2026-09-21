@@ -1,5 +1,35 @@
 use serde::{Deserialize, Serialize};
 
+/// Category or kind of a completion suggestion item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum SuggestionKind {
+    Directory,
+    File,
+    Command,
+    Subcommand,
+    Option,
+    PowerShellCmdlet,
+    Alias,
+    #[default]
+    Other,
+}
+
+impl SuggestionKind {
+    /// Returns the UI icon associated with this suggestion kind.
+    pub fn icon(&self) -> &'static str {
+        match self {
+            SuggestionKind::Directory => "📁 ",
+            SuggestionKind::File => "📄 ",
+            SuggestionKind::Command => "⚡ ",
+            SuggestionKind::Subcommand => "🔹 ",
+            SuggestionKind::Option => "🏷️  ",
+            SuggestionKind::PowerShellCmdlet => ">_ ",
+            SuggestionKind::Alias => "🔗 ",
+            SuggestionKind::Other => "  ",
+        }
+    }
+}
+
 /// Represents a completion candidate shown to the user.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Suggestion {
@@ -11,10 +41,12 @@ pub struct Suggestion {
     pub description: Option<String>,
     /// Priority score for ranking suggestions (higher values rank first).
     pub priority: u32,
+    /// The category/kind of suggestion (e.g. file, directory, subcommand).
+    pub kind: SuggestionKind,
 }
 
 impl Suggestion {
-    /// Creates a new `Suggestion` instance.
+    /// Creates a new `Suggestion` instance with default `Other` kind.
     pub fn new(
         name: impl Into<String>,
         display: impl Into<String>,
@@ -26,7 +58,14 @@ impl Suggestion {
             display: display.into(),
             description,
             priority,
+            kind: SuggestionKind::Other,
         }
+    }
+
+    /// Builder method to specify the `SuggestionKind`.
+    pub fn with_kind(mut self, kind: SuggestionKind) -> Self {
+        self.kind = kind;
+        self
     }
 }
 

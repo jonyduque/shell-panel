@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::engine::lexer::lex_command_line;
-use crate::engine::provider::{CompletionProvider, Suggestion};
+use crate::engine::provider::{CompletionProvider, Suggestion, SuggestionKind};
 
 /// Represents an option/flag in a Fig-converted JSON spec.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -151,12 +151,15 @@ impl CompletionProvider for JsonSpecProvider {
             // User typed only the root command
             let mut results = Vec::new();
             for subcmd in curr_subcommands {
-                results.push(Suggestion::new(
-                    &subcmd.name,
-                    &subcmd.name,
-                    subcmd.description.clone(),
-                    80,
-                ));
+                results.push(
+                    Suggestion::new(
+                        &subcmd.name,
+                        &subcmd.name,
+                        subcmd.description.clone(),
+                        80,
+                    )
+                    .with_kind(SuggestionKind::Subcommand),
+                );
             }
             results.sort_by(|a, b| b.priority.cmp(&a.priority).then_with(|| a.name.cmp(&b.name)));
             return results;
@@ -184,24 +187,30 @@ impl CompletionProvider for JsonSpecProvider {
             for opt in curr_options {
                 for opt_name in &opt.name {
                     if opt_name.to_lowercase().starts_with(&active_lower) {
-                        suggestions.push(Suggestion::new(
-                            opt_name,
-                            opt_name,
-                            opt.description.clone(),
-                            75,
-                        ));
+                        suggestions.push(
+                            Suggestion::new(
+                                opt_name,
+                                opt_name,
+                                opt.description.clone(),
+                                75,
+                            )
+                            .with_kind(SuggestionKind::Option),
+                        );
                     }
                 }
             }
         } else {
             for subcmd in curr_subcommands {
                 if subcmd.name.to_lowercase().starts_with(&active_lower) {
-                    suggestions.push(Suggestion::new(
-                        &subcmd.name,
-                        &subcmd.name,
-                        subcmd.description.clone(),
-                        80,
-                    ));
+                    suggestions.push(
+                        Suggestion::new(
+                            &subcmd.name,
+                            &subcmd.name,
+                            subcmd.description.clone(),
+                            80,
+                        )
+                        .with_kind(SuggestionKind::Subcommand),
+                    );
                 }
             }
         }

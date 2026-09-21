@@ -2,7 +2,7 @@ use serde::Deserialize;
 use tokio::process::Command;
 
 use crate::engine::lexer::lex_command_line;
-use crate::engine::provider::{CompletionProvider, Suggestion};
+use crate::engine::provider::{CompletionProvider, Suggestion, SuggestionKind};
 
 /// Represents an entry in Carapace's export JSON format.
 #[derive(Debug, Deserialize)]
@@ -73,7 +73,12 @@ pub fn parse_carapace_json(json_str: &str) -> Vec<Suggestion> {
                 .filter(|d| !d.is_empty())
                 .unwrap_or_else(|| item.value.clone());
             let description = item.description.filter(|d| !d.is_empty());
-            Suggestion::new(item.value, display, description, 70)
+            let kind = if item.value.starts_with('-') {
+                SuggestionKind::Option
+            } else {
+                SuggestionKind::Subcommand
+            };
+            Suggestion::new(item.value, display, description, 70).with_kind(kind)
         })
         .collect()
 }

@@ -1,7 +1,7 @@
 use std::fs::{create_dir_all, remove_dir_all, File};
 use std::io::Write;
 
-use shell_panel::engine::provider::CompletionProvider;
+use shell_panel::engine::provider::{CompletionProvider, SuggestionKind};
 use shell_panel::engine::providers::carapace::{parse_carapace_json, CarapaceProvider};
 use shell_panel::engine::providers::files::FileProvider;
 use shell_panel::engine::providers::json_spec::{FigSpec, JsonSpecProvider};
@@ -157,10 +157,12 @@ async fn test_file_provider_listing() {
     assert_eq!(subfolder.priority, 60);
     assert_eq!(subfolder.name, "subfolder/");
     assert_eq!(subfolder.description, Some("Directory".into()));
+    assert_eq!(subfolder.kind, SuggestionKind::Directory);
 
     // Files have priority 50
     let file1_sug = suggestions.iter().find(|s| s.name == "file1.txt").unwrap();
     assert_eq!(file1_sug.priority, 50);
+    assert_eq!(file1_sug.kind, SuggestionKind::File);
 
     // Filter by prefix "file"
     let file_filtered = provider.complete("cat file", temp_dir_str).await;
@@ -232,6 +234,7 @@ async fn test_json_spec_provider() {
         Some("Show the working tree status".to_string())
     );
     assert_eq!(suggestions[0].priority, 80);
+    assert_eq!(suggestions[0].kind, SuggestionKind::Subcommand);
 
     // Option matching under subcommand: `git commit -m`
     let suggestions_commit_opt = provider.complete("git commit -m", "").await;
@@ -242,6 +245,7 @@ async fn test_json_spec_provider() {
         Some("Use the given msg as commit message".to_string())
     );
     assert_eq!(suggestions_commit_opt[0].priority, 75);
+    assert_eq!(suggestions_commit_opt[0].kind, SuggestionKind::Option);
 
     // Option matching under subcommand with `-`: all options for commit
     let all_commit_opts = provider.complete("git commit -", "").await;
@@ -284,6 +288,7 @@ fn test_carapace_provider_parse() {
         Some("Show the working tree status".to_string())
     );
     assert_eq!(parsed[0].priority, 70);
+    assert_eq!(parsed[0].kind, SuggestionKind::Subcommand);
 
     assert_eq!(parsed[1].name, "commit");
     assert_eq!(parsed[1].display, "commit");
@@ -291,17 +296,22 @@ fn test_carapace_provider_parse() {
         parsed[1].description,
         Some("Record changes to the repository".to_string())
     );
+    assert_eq!(parsed[1].kind, SuggestionKind::Subcommand);
 
-    // Object format
+    // Object format with option
     let json_object = r#"{
         "values": [
-            { "value": "checkout", "display": "checkout", "description": "Switch branches" }
+            { "value": "checkout", "display": "checkout", "description": "Switch branches" },
+            { "value": "--help", "display": "--help", "description": "Show help" }
         ]
     }"#;
 
     let parsed_obj = parse_carapace_json(json_object);
-    assert_eq!(parsed_obj.len(), 1);
+    assert_eq!(parsed_obj.len(), 2);
     assert_eq!(parsed_obj[0].name, "checkout");
+    assert_eq!(parsed_obj[0].kind, SuggestionKind::Subcommand);
+    assert_eq!(parsed_obj[1].name, "--help");
+    assert_eq!(parsed_obj[1].kind, SuggestionKind::Option);
 
     // Invalid JSON returns empty vec
     let invalid = parse_carapace_json("not json");
@@ -330,6 +340,7 @@ fn test_zoxide_provider() {
     assert_eq!(all[0].name, "C:\\Users\\jonyd\\Projetos\\inshellisense");
     assert_eq!(all[0].description, Some("Zoxide Directory".to_string()));
     assert_eq!(all[0].priority, 70);
+    assert_eq!(all[0].kind, SuggestionKind::Directory);
 
     // Filter by path prefix "C:\Users"
     let users = parse_zoxide_output(zoxide_output, "C:\\Users");

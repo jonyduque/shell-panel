@@ -2,7 +2,7 @@ use std::path::Path;
 use tokio::process::Command;
 
 use crate::engine::lexer::lex_command_line;
-use crate::engine::provider::{CompletionProvider, Suggestion};
+use crate::engine::provider::{CompletionProvider, Suggestion, SuggestionKind};
 
 /// Completion provider that queries `zoxide` directory jump history.
 #[derive(Debug, Clone)]
@@ -61,12 +61,15 @@ pub fn parse_zoxide_output(output: &str, prefix: &str) -> Vec<Suggestion> {
         };
 
         if matches {
-            suggestions.push(Suggestion::new(
-                trimmed,
-                trimmed,
-                Some("Zoxide Directory".into()),
-                70,
-            ));
+            suggestions.push(
+                Suggestion::new(
+                    trimmed,
+                    trimmed,
+                    Some("Zoxide Directory".into()),
+                    70,
+                )
+                .with_kind(SuggestionKind::Directory),
+            );
         }
     }
 
