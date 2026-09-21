@@ -44,6 +44,7 @@ pub fn parse_osc_sequence(payload: &str) -> Option<OscEvent> {
 /// Handles:
 /// - `\\` -> `\`
 /// - `\xHH` -> raw UTF-8 byte
+///
 /// Multibyte UTF-8 sequences are decoded safely.
 pub fn unescape_value(input: &str) -> String {
     let mut bytes = Vec::with_capacity(input.len());

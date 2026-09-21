@@ -117,31 +117,10 @@ impl Theme {
     }
 }
 
-/// Formats a line or text segment with reverse video (invert) ANSI escape sequence.
-pub fn format_selected(text: &str) -> String {
-    Theme::format_selected(text)
-}
-
-/// Formats description text with dim / faint bright black ANSI escape sequence.
-pub fn format_description(text: &str) -> String {
-    Theme::format_description(text)
-}
-
 /// Formats a suggestion into a styled, aligned, padded/truncated line using the default theme.
 pub fn format_suggestion_line(sug: &Suggestion, selected: bool, max_width: usize) -> String {
     let theme = Theme::default();
     format_suggestion_line_with_theme(sug, selected, max_width, &theme)
-}
-
-/// Formats a suggestion with custom minimum and maximum column widths using the default theme.
-pub fn format_suggestion_line_with_min_width(
-    sug: &Suggestion,
-    selected: bool,
-    min_width: usize,
-    max_width: usize,
-) -> String {
-    let theme = Theme::default();
-    format_suggestion_line_with_theme_and_min_width(sug, &theme, selected, min_width, max_width)
 }
 
 /// Formats a suggestion into a styled, aligned line using a specific theme.

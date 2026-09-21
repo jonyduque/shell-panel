@@ -41,11 +41,11 @@ fn utf16_len(s: &str) -> usize {
 /// When `suggestion` extends `typed` only the missing suffix is typed.
 pub fn calculate_replacement(typed: &str, suggestion: &str) -> ReplacementAction {
     let space = trailing_space(suggestion);
-    if suggestion.starts_with(typed) {
+    if let Some(rest) = suggestion.strip_prefix(typed) {
         ReplacementAction {
             backspace_count: 0,
             delete_count: 0,
-            insert_text: format!("{}{}", &suggestion[typed.len()..], space),
+            insert_text: format!("{}{}", rest, space),
         }
     } else {
         ReplacementAction {

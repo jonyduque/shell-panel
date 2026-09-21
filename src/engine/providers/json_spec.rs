@@ -103,11 +103,6 @@ impl JsonSpecProvider {
         }
     }
 
-    /// Creates a `JsonSpecProvider` initialized with the given map of specifications.
-    pub fn from_specs(specs: HashMap<String, FigSpec>) -> Self {
-        Self { specs }
-    }
-
     /// Adds a Fig specification to this provider.
     pub fn add_spec(&mut self, spec: FigSpec) {
         self.specs.insert(spec.name.clone(), spec);

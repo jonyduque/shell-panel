@@ -48,7 +48,7 @@ fn test_lex_command_line_unclosed_quote() {
     let tokens = lex_command_line("git commit -m \"feat: test");
     assert_eq!(tokens.len(), 4);
     // Unclosed quote must be complete: false
-    assert_eq!(tokens[3].complete, false);
+    assert!(!tokens[3].complete);
 }
 
 #[test]

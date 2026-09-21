@@ -24,18 +24,6 @@ fn test_format_suggestion_line_with_icons() {
 }
 
 #[test]
-fn test_all_suggestion_kind_icons() {
-    assert_eq!(SuggestionKind::Directory.icon(), "📁 ");
-    assert_eq!(SuggestionKind::File.icon(), "📄 ");
-    assert_eq!(SuggestionKind::Command.icon(), "⚡ ");
-    assert_eq!(SuggestionKind::Subcommand.icon(), "🔹 ");
-    assert_eq!(SuggestionKind::Option.icon(), "🏷️  ");
-    assert_eq!(SuggestionKind::PowerShellCmdlet.icon(), ">_ ");
-    assert_eq!(SuggestionKind::Alias.icon(), "🔗 ");
-    assert_eq!(SuggestionKind::Other.icon(), "  ");
-}
-
-#[test]
 fn test_format_suggestion_line_selected_highlight() {
     let sug = Suggestion::new("checkout", "checkout", Some("Checkout branch".into()), 80)
         .with_kind(SuggestionKind::Subcommand);
@@ -77,14 +65,16 @@ fn test_theme_default_values() {
 
 #[test]
 fn test_theme_from_config_colors() {
-    let mut config = Config::default();
-    config.colors = ColorConfig {
-        selected_bg: "blue".to_string(),
-        selected_fg: "white".to_string(),
-        unselected_fg: "gray".to_string(),
-        description_fg: "yellow".to_string(),
-        selected_prefix: "* ".to_string(),
-        unselected_prefix: "- ".to_string(),
+    let config = Config {
+        colors: ColorConfig {
+            selected_bg: "blue".to_string(),
+            selected_fg: "white".to_string(),
+            unselected_fg: "gray".to_string(),
+            description_fg: "yellow".to_string(),
+            selected_prefix: "* ".to_string(),
+            unselected_prefix: "- ".to_string(),
+        },
+        ..Default::default()
     };
 
     let theme = Theme::from_config(&config);
@@ -123,16 +113,18 @@ fn test_theme_from_config_hex_and_256_colors() {
 
 #[test]
 fn test_theme_from_config_custom_icons() {
-    let mut config = Config::default();
-    config.icons = IconConfig {
-        directory: "[DIR] ".to_string(),
-        file: "[FILE] ".to_string(),
-        command: "[CMD] ".to_string(),
-        subcommand: "[SUB] ".to_string(),
-        option: "[OPT] ".to_string(),
-        powershell_cmdlet: "[PS] ".to_string(),
-        alias: "[AL] ".to_string(),
-        other: "[?] ".to_string(),
+    let config = Config {
+        icons: IconConfig {
+            directory: "[DIR] ".to_string(),
+            file: "[FILE] ".to_string(),
+            command: "[CMD] ".to_string(),
+            subcommand: "[SUB] ".to_string(),
+            option: "[OPT] ".to_string(),
+            powershell_cmdlet: "[PS] ".to_string(),
+            alias: "[AL] ".to_string(),
+            other: "[?] ".to_string(),
+        },
+        ..Default::default()
     };
 
     let theme = Theme::from_config(&config);
@@ -148,14 +140,16 @@ fn test_theme_from_config_custom_icons() {
 
 #[test]
 fn test_format_suggestion_line_with_custom_theme() {
-    let mut config = Config::default();
-    config.colors = ColorConfig {
-        selected_bg: "magenta".to_string(),
-        selected_fg: "white".to_string(),
-        unselected_fg: "cyan".to_string(),
-        description_fg: "yellow".to_string(),
-        selected_prefix: ">> ".to_string(),
-        unselected_prefix: "   ".to_string(),
+    let mut config = Config {
+        colors: ColorConfig {
+            selected_bg: "magenta".to_string(),
+            selected_fg: "white".to_string(),
+            unselected_fg: "cyan".to_string(),
+            description_fg: "yellow".to_string(),
+            selected_prefix: ">> ".to_string(),
+            unselected_prefix: "   ".to_string(),
+        },
+        ..Default::default()
     };
     config.icons.command = "$ ".to_string();
 

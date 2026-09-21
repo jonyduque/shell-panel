@@ -1,6 +1,6 @@
 use crate::pty::shell::ShellType;
 use anyhow::{Context, Result};
-use portable_pty::{native_pty_system, CommandBuilder, ExitStatus, PtyPair, PtySize};
+use portable_pty::{native_pty_system, CommandBuilder, PtyPair, PtySize};
 
 /// Environment variable set to `1` inside a shell-panel session.
 pub const SESSION_ENV: &str = "SHELL_PANEL_SESSION";
@@ -48,7 +48,7 @@ impl ConPtySession {
 
         let child = pair.slave.spawn_command(cmd).with_context(|| {
             format!(
-                "Falha ao iniciar processo da shell {}",
+                "Failed to start shell process {}",
                 shell_type.executable_name()
             )
         })?;
@@ -65,18 +65,6 @@ impl ConPtySession {
             pixel_height: 0,
         })?;
         Ok(())
-    }
-
-    /// Terminates the child process.
-    pub fn kill(&mut self) -> Result<()> {
-        self.child.kill()?;
-        Ok(())
-    }
-
-    /// Checks the child process exit status without blocking.
-    pub fn try_wait(&mut self) -> Result<Option<ExitStatus>> {
-        let status = self.child.try_wait()?;
-        Ok(status)
     }
 }
 

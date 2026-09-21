@@ -40,7 +40,7 @@ fn test_unterminated_message_is_not_buffered_forever() {
     let mut residual = Vec::new();
 
     let mut chunk = b"\x1b]6973;CMP;".to_vec();
-    chunk.extend(std::iter::repeat(b'a').take(MAX_MESSAGE_BYTES + 1));
+    chunk.extend(std::iter::repeat_n(b'a', MAX_MESSAGE_BYTES + 1));
     let out = ingest_pty_chunk(&chunk, &mut term, &mut state, &mut residual);
 
     assert!(residual.is_empty());

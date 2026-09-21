@@ -45,9 +45,9 @@ fn test_detect_shell_auto() {
 fn test_conpty_session_spawn_and_resize() {
     let shell = detect_shell(None);
     let mut session = ConPtySession::spawn(shell, 80, 24, SpawnOptions { no_profile: true })
-        .expect("Falha ao criar sessão ConPTY");
+        .expect("Failed to create ConPTY session");
     assert!(session.resize(120, 40).is_ok());
-    let _ = session.kill();
+    let _ = session.child.kill();
 }
 
 #[tokio::test]

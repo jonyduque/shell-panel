@@ -99,16 +99,4 @@ impl SuggestionState {
             .map(|(offset, item)| (item, (start + offset) == self.active_idx))
             .collect()
     }
-
-    /// Returns `(current_page_1_indexed, total_pages)`.
-    pub fn page_info(&self) -> (usize, usize) {
-        if self.suggestions.is_empty() {
-            return (0, 0);
-        }
-
-        let max_rows = self.max_rows.max(1);
-        let total_pages = (self.suggestions.len() + max_rows - 1) / max_rows;
-        let current_page = (self.active_idx / max_rows) + 1;
-        (current_page, total_pages)
-    }
 }

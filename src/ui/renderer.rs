@@ -115,24 +115,3 @@ impl Renderer {
         Ok(())
     }
 }
-
-/// Top-level helper function forwarding to `Renderer::render_dropdown`.
-pub fn render_dropdown<W: Write>(
-    state: &SuggestionState,
-    term: &HeadlessTerminal,
-    theme: &Theme,
-    cursor_x: u16,
-    cursor_y: u16,
-    out: &mut W,
-) -> std::io::Result<Option<DropdownLayout>> {
-    Renderer::render_dropdown(state, term, theme, cursor_x, cursor_y, out)
-}
-
-/// Top-level helper function forwarding to `Renderer::clear_dropdown`.
-pub fn clear_dropdown<W: Write>(
-    layout: &DropdownLayout,
-    term: &HeadlessTerminal,
-    out: &mut W,
-) -> std::io::Result<()> {
-    Renderer::clear_dropdown(layout, term, out)
-}

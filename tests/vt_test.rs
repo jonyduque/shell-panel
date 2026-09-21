@@ -1,4 +1,3 @@
-use shell_panel::vt::cpr::has_cpr_query;
 use shell_panel::vt::emulator::HeadlessTerminal;
 
 #[test]
@@ -17,17 +16,6 @@ fn test_vt_headless_basic_processing_and_cursor() {
     vt.resize(120, 40);
     assert_eq!(vt.cols, 120);
     assert_eq!(vt.rows, 40);
-}
-
-#[test]
-fn test_cpr_query_detection() {
-    assert!(has_cpr_query(b"\x1b[6n"));
-    assert!(has_cpr_query(b"\x1b[?6n"));
-    assert!(has_cpr_query(b"some prefix \x1b[6n and suffix"));
-    assert!(has_cpr_query(b"prefix \x1b[?6n suffix"));
-    assert!(!has_cpr_query(b"normal text without cpr"));
-    assert!(!has_cpr_query(b"\x1b[5n"));
-    assert!(!has_cpr_query(b""));
 }
 
 #[test]

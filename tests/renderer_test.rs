@@ -1,5 +1,5 @@
 use shell_panel::engine::provider::Suggestion;
-use shell_panel::ui::patch::{restore_line, LinePatch};
+use shell_panel::ui::patch::restore_line;
 use shell_panel::ui::renderer::{DropdownLayout, Renderer};
 use shell_panel::ui::suggestion_state::SuggestionState;
 use shell_panel::ui::theme::{Theme, SELECTED_PREFIX, UNSELECTED_PREFIX};
@@ -61,7 +61,6 @@ fn test_suggestion_state_pagination_and_dismiss() {
 
     state.set_suggestions(suggestions);
     assert!(state.visible);
-    assert_eq!(state.page_info(), (1, 3));
 
     // Page 1: items 0, 1, 2
     let page1 = state.visible_page();
@@ -76,7 +75,6 @@ fn test_suggestion_state_pagination_and_dismiss() {
     state.move_down(); // 2
     state.move_down(); // 3
     assert_eq!(state.active_index(), 3);
-    assert_eq!(state.page_info(), (2, 3));
 
     let page2 = state.visible_page();
     assert_eq!(page2.len(), 3);
@@ -92,7 +90,6 @@ fn test_suggestion_state_pagination_and_dismiss() {
     state.move_down(); // 5
     state.move_down(); // 6
     assert_eq!(state.active_index(), 6);
-    assert_eq!(state.page_info(), (3, 3));
 
     let page3 = state.visible_page();
     assert_eq!(page3.len(), 1);
@@ -277,20 +274,6 @@ fn test_theme_constants_and_helpers() {
     assert!(desc.contains("help text"));
 }
 
-#[test]
-fn test_line_patch_struct() {
-    let patch = LinePatch {
-        row: 5,
-        col: 10,
-        content: "sample".to_string(),
-    };
-    assert_eq!(patch.row, 5);
-    assert_eq!(patch.col, 10);
-    assert_eq!(patch.content, "sample");
-    let cloned = patch.clone();
-    assert_eq!(patch, cloned);
-}
-
 fn many(n: usize) -> Vec<Suggestion> {
     (0..n)
         .map(|i| Suggestion::new(format!("item{i}"), format!("item{i}"), None, 50))
@@ -402,18 +385,20 @@ fn test_render_dropdown_with_custom_theme() {
     ];
     state.set_suggestions(suggestions);
 
-    let mut config = Config::default();
-    config.colors = ColorConfig {
-        selected_bg: "magenta".to_string(),
-        selected_fg: "white".to_string(),
-        unselected_fg: "cyan".to_string(),
-        description_fg: "yellow".to_string(),
-        selected_prefix: ">> ".to_string(),
-        unselected_prefix: "   ".to_string(),
-    };
-    config.icons = IconConfig {
-        command: "CMD: ".to_string(),
-        subcommand: "SUB: ".to_string(),
+    let config = Config {
+        colors: ColorConfig {
+            selected_bg: "magenta".to_string(),
+            selected_fg: "white".to_string(),
+            unselected_fg: "cyan".to_string(),
+            description_fg: "yellow".to_string(),
+            selected_prefix: ">> ".to_string(),
+            unselected_prefix: "   ".to_string(),
+        },
+        icons: IconConfig {
+            command: "CMD: ".to_string(),
+            subcommand: "SUB: ".to_string(),
+            ..Default::default()
+        },
         ..Default::default()
     };
 

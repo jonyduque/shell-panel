@@ -14,22 +14,6 @@ pub enum SuggestionKind {
     Other,
 }
 
-impl SuggestionKind {
-    /// Returns the UI icon associated with this suggestion kind.
-    pub fn icon(&self) -> &'static str {
-        match self {
-            SuggestionKind::Directory => "📁 ",
-            SuggestionKind::File => "📄 ",
-            SuggestionKind::Command => "⚡ ",
-            SuggestionKind::Subcommand => "🔹 ",
-            SuggestionKind::Option => "🏷️  ",
-            SuggestionKind::PowerShellCmdlet => ">_ ",
-            SuggestionKind::Alias => "🔗 ",
-            SuggestionKind::Other => "  ",
-        }
-    }
-}
-
 /// Represents a completion candidate shown to the user.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Suggestion {
