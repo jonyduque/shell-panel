@@ -141,7 +141,7 @@ pub fn format_suggestion_line_with_min_width(
     max_width: usize,
 ) -> String {
     let theme = Theme::default();
-    format_suggestion_line_with_theme_and_min_width(sug, selected, min_width, max_width, &theme)
+    format_suggestion_line_with_theme_and_min_width(sug, &theme, selected, min_width, max_width)
 }
 
 /// Formats a suggestion into a styled, aligned line using a specific theme.
@@ -151,16 +151,16 @@ pub fn format_suggestion_line_with_theme(
     max_width: usize,
     theme: &Theme,
 ) -> String {
-    format_suggestion_line_with_theme_and_min_width(sug, selected, 30.min(max_width), max_width, theme)
+    format_suggestion_line_with_theme_and_min_width(sug, theme, selected, 30.min(max_width), max_width)
 }
 
 /// Formats a suggestion with custom minimum and maximum column widths using a specific theme.
 pub fn format_suggestion_line_with_theme_and_min_width(
     sug: &Suggestion,
+    theme: &Theme,
     selected: bool,
     min_width: usize,
     max_width: usize,
-    theme: &Theme,
 ) -> String {
     if max_width == 0 {
         return String::new();

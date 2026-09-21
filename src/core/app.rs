@@ -604,13 +604,16 @@ pub fn should_include_files<'a>(
 
 pub struct App {
     pub config: Config,
+    pub theme: crate::ui::theme::Theme,
     pub override_shell: Option<String>,
 }
 
 impl App {
     pub fn new(config: Config, override_shell: Option<String>) -> Self {
+        let theme = crate::ui::theme::Theme::from_config(&config);
         Self {
             config,
+            theme,
             override_shell,
         }
     }
@@ -721,7 +724,7 @@ impl App {
                                     if suggestion_state.visible {
                                         suggestion_state.move_down();
                                         let (cx, cy) = term.cursor_position();
-                                        dropdown_layout = Renderer::render_dropdown(&suggestion_state, &term, cx, cy, &mut stdout).ok().flatten();
+                                        dropdown_layout = Renderer::render_dropdown(&suggestion_state, &term, &self.theme, cx, cy, &mut stdout).ok().flatten();
                                     } else {
                                         let encoded = encode_key_event(&key_event);
                                         if !encoded.is_empty() {
@@ -734,7 +737,7 @@ impl App {
                                     if suggestion_state.visible {
                                         suggestion_state.move_up();
                                         let (cx, cy) = term.cursor_position();
-                                        dropdown_layout = Renderer::render_dropdown(&suggestion_state, &term, cx, cy, &mut stdout).ok().flatten();
+                                        dropdown_layout = Renderer::render_dropdown(&suggestion_state, &term, &self.theme, cx, cy, &mut stdout).ok().flatten();
                                     } else {
                                         let encoded = encode_key_event(&key_event);
                                         if !encoded.is_empty() {
@@ -847,7 +850,7 @@ impl App {
                                             } else {
                                                 suggestion_state.set_suggestions(results);
                                                 let (cx, cy) = term.cursor_position();
-                                                dropdown_layout = Renderer::render_dropdown(&suggestion_state, &term, cx, cy, &mut stdout).ok().flatten();
+                                                dropdown_layout = Renderer::render_dropdown(&suggestion_state, &term, &self.theme, cx, cy, &mut stdout).ok().flatten();
                                             }
                                         }
                                     }

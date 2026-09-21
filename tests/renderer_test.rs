@@ -118,7 +118,7 @@ fn test_render_dropdown_below_cursor_and_ansi_sequences() {
     let cursor_x = 4;
     let cursor_y = 5;
 
-    let layout = Renderer::render_dropdown(&state, &term, cursor_x, cursor_y, &mut out)
+    let layout = Renderer::render_dropdown(&state, &term, &Theme::default(), cursor_x, cursor_y, &mut out)
         .expect("render_dropdown succeeds");
 
     assert_eq!(
@@ -159,7 +159,7 @@ fn test_render_dropdown_above_cursor_when_at_bottom() {
     let cursor_x = 0;
     let cursor_y = 23; // Bottom row in 24-row terminal (0-indexed: 0..23)
 
-    let layout = Renderer::render_dropdown(&state, &term, cursor_x, cursor_y, &mut out)
+    let layout = Renderer::render_dropdown(&state, &term, &Theme::default(), cursor_x, cursor_y, &mut out)
         .expect("render_dropdown succeeds");
 
     // Should render above: start_row = 23 - 5 = 18, row_count = 5
@@ -184,14 +184,14 @@ fn test_render_dropdown_hidden_or_empty_returns_none() {
     let mut out = Vec::new();
 
     // Empty state
-    let res = Renderer::render_dropdown(&state, &term, 0, 0, &mut out).unwrap();
+    let res = Renderer::render_dropdown(&state, &term, &Theme::default(), 0, 0, &mut out).unwrap();
     assert_eq!(res, None);
     assert!(out.is_empty());
 
     // Dismissed state
     state.set_suggestions(vec![Suggestion::new("test", "test", None, 1)]);
     state.dismiss();
-    let res = Renderer::render_dropdown(&state, &term, 0, 0, &mut out).unwrap();
+    let res = Renderer::render_dropdown(&state, &term, &Theme::default(), 0, 0, &mut out).unwrap();
     assert_eq!(res, None);
     assert!(out.is_empty());
 }
@@ -259,4 +259,52 @@ fn test_line_patch_struct() {
     assert_eq!(patch.content, "sample");
     let cloned = patch.clone();
     assert_eq!(patch, cloned);
+}
+
+#[test]
+fn test_render_dropdown_with_custom_theme() {
+    use shell_panel::core::config::{ColorConfig, Config, IconConfig};
+    use shell_panel::engine::provider::SuggestionKind;
+
+    let term = HeadlessTerminal::new(80, 24);
+    let mut state = SuggestionState::new(5);
+    let suggestions = vec![
+        Suggestion::new("git status", "git status", Some("Show status".to_string()), 100)
+            .with_kind(SuggestionKind::Command),
+        Suggestion::new("git switch", "git switch", Some("Switch branches".to_string()), 90)
+            .with_kind(SuggestionKind::Subcommand),
+    ];
+    state.set_suggestions(suggestions);
+
+    let mut config = Config::default();
+    config.colors = ColorConfig {
+        selected_bg: "magenta".to_string(),
+        selected_fg: "white".to_string(),
+        unselected_fg: "cyan".to_string(),
+        description_fg: "yellow".to_string(),
+        selected_prefix: ">> ".to_string(),
+        unselected_prefix: "   ".to_string(),
+    };
+    config.icons = IconConfig {
+        command: "CMD: ".to_string(),
+        subcommand: "SUB: ".to_string(),
+        ..Default::default()
+    };
+
+    let theme = Theme::from_config(&config);
+    let mut out = Vec::new();
+    let layout = Renderer::render_dropdown(&state, &term, &theme, 2, 3, &mut out)
+        .expect("render_dropdown succeeds");
+
+    assert!(layout.is_some());
+    let rendered = String::from_utf8(out).expect("valid utf-8 output");
+
+    // Check custom theme colors & prefixes & icons
+    assert!(rendered.contains("\x1b[45m\x1b[37m"), "must have magenta bg and white fg for selected");
+    assert!(rendered.contains(">> "), "must contain custom selected prefix");
+    assert!(rendered.contains("CMD: "), "must contain custom command icon");
+    assert!(rendered.contains("git status"), "must contain command text");
+    assert!(rendered.contains("SUB: "), "must contain custom subcommand icon");
+    assert!(rendered.contains("\x1b[36m"), "must have unselected cyan fg");
+    assert!(rendered.contains("\x1b[33m"), "must have description yellow fg");
 }

@@ -19,11 +19,24 @@ pub struct Cli {
     /// Check if currently running inside a shell-panel session
     #[arg(short, long)]
     pub check: bool,
+
+    /// Path to TOML configuration file (defaults to ~/.config/shell-panel.toml)
+    #[arg(short, long)]
+    pub config: Option<std::path::PathBuf>,
+
+    /// Print default sample configuration in TOML format
+    #[arg(long)]
+    pub print_default_config: bool,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+
+    if cli.print_default_config {
+        println!("{}", core::config::default_sample_toml());
+        std::process::exit(0);
+    }
 
     let in_session = std::env::var("ISTERM").unwrap_or_default() == "1";
     if cli.check {
@@ -56,8 +69,9 @@ async fn main() -> anyhow::Result<()> {
         default_hook(info);
     }));
 
-    let config = core::config::Config::default();
-    let mut app = core::app::App::new(config, cli.shell);
+    let config = core::config::Config::load_or_default(cli.config.as_deref());
+    let shell = cli.shell.or_else(|| config.shell.clone());
+    let mut app = core::app::App::new(config, shell);
     let exit_code = app.run().await?;
 
     if exit_code != 0 {

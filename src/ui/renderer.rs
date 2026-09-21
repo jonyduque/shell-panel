@@ -2,7 +2,7 @@ use std::io::Write;
 
 use crate::ui::patch;
 use crate::ui::suggestion_state::SuggestionState;
-use crate::ui::theme::format_suggestion_line_with_min_width;
+use crate::ui::theme::{format_suggestion_line_with_theme_and_min_width, Theme};
 use crate::vt::emulator::HeadlessTerminal;
 
 /// Represents the vertical on-screen layout of an active dropdown menu.
@@ -22,6 +22,7 @@ impl Renderer {
     pub fn render_dropdown<W: Write>(
         state: &SuggestionState,
         term: &HeadlessTerminal,
+        theme: &Theme,
         cursor_x: u16,
         cursor_y: u16,
         out: &mut W,
@@ -51,7 +52,7 @@ impl Renderer {
 
         let col = (cursor_x + 1).min(term.cols);
         let available_cols = (term.cols as usize).saturating_sub((col as usize).saturating_sub(1));
-        let target_min_width = 30.min(available_cols);
+        let min_width = 30.min(available_cols);
 
         // Hide cursor and save cursor position
         write!(out, "\x1b[?25l\x1b[s")?;
@@ -64,11 +65,12 @@ impl Renderer {
             }
             rendered_rows += 1;
 
-            let styled_line = format_suggestion_line_with_min_width(
+            let styled_line = format_suggestion_line_with_theme_and_min_width(
                 sug,
+                theme,
                 *selected,
-                target_min_width,
-                available_cols,
+                min_width,
+                term.cols as usize,
             );
 
             // Move cursor to (target_row + 1, col) and write line
@@ -112,11 +114,12 @@ impl Renderer {
 pub fn render_dropdown<W: Write>(
     state: &SuggestionState,
     term: &HeadlessTerminal,
+    theme: &Theme,
     cursor_x: u16,
     cursor_y: u16,
     out: &mut W,
 ) -> std::io::Result<Option<DropdownLayout>> {
-    Renderer::render_dropdown(state, term, cursor_x, cursor_y, out)
+    Renderer::render_dropdown(state, term, theme, cursor_x, cursor_y, out)
 }
 
 /// Top-level helper function forwarding to `Renderer::clear_dropdown`.
