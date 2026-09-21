@@ -306,7 +306,7 @@ pub fn active_token_raw(input: &str) -> &str {
         let next = i + c.len_utf8();
         match state {
             DelimQuoteState::Normal => match c {
-                ' ' | '\t' | '|' | ';' | '&' => start = next,
+                ' ' | '\t' | '\n' | '\r' | '|' | ';' | '&' => start = next,
                 '\'' => state = DelimQuoteState::SingleQuote,
                 '"' => state = DelimQuoteState::DoubleQuote,
                 '`' => {

@@ -31,6 +31,12 @@ fn trailing_space(suggestion: &str) -> &'static str {
     }
 }
 
+/// Number of keys PSReadLine needs to erase `s`: it removes one UTF-16 code unit per
+/// Backspace or Delete, so a character outside the BMP costs two keys.
+fn utf16_len(s: &str) -> usize {
+    s.chars().map(char::len_utf16).sum()
+}
+
 /// Replaces `typed` (the text right before the cursor) with `suggestion`.
 /// When `suggestion` extends `typed` only the missing suffix is typed.
 pub fn calculate_replacement(typed: &str, suggestion: &str) -> ReplacementAction {
@@ -43,7 +49,7 @@ pub fn calculate_replacement(typed: &str, suggestion: &str) -> ReplacementAction
         }
     } else {
         ReplacementAction {
-            backspace_count: typed.chars().count(),
+            backspace_count: utf16_len(typed),
             delete_count: 0,
             insert_text: format!("{}{}", suggestion, space),
         }
@@ -56,8 +62,8 @@ pub fn replace_range(before: &str, after: &str, suggestion: &str) -> Replacement
         return calculate_replacement(before, suggestion);
     }
     ReplacementAction {
-        backspace_count: before.chars().count(),
-        delete_count: after.chars().count(),
+        backspace_count: utf16_len(before),
+        delete_count: utf16_len(after),
         insert_text: format!("{}{}", suggestion, trailing_space(suggestion)),
     }
 }

@@ -102,20 +102,20 @@ fn test_calculate_replacement_fuzzy_and_unicode() {
         }
     );
 
-    // Unicode emoji case mismatch / replacement (char count, not byte count)
-    // "🚀TE" is 3 chars (🚀 is 4 bytes, T is 1 byte, E is 1 byte = 6 bytes)
+    // Unicode emoji case mismatch / replacement (UTF-16 code units, not bytes or scalars)
+    // "🚀TE" is 4 UTF-16 units (🚀 is a surrogate pair = 2, T is 1, E is 1)
     let action_emoji_case = calculate_replacement("🚀TE", "🚀test");
     assert_eq!(
         action_emoji_case,
         ReplacementAction {
-            backspace_count: 3,
+            backspace_count: 4,
             delete_count: 0,
             insert_text: "🚀test ".to_string(),
         }
     );
 
     // CJK characters
-    // "你好" is 2 chars (6 bytes)
+    // "你好" is 2 chars, each one UTF-16 unit
     let action_cjk = calculate_replacement("你好", "你好世界");
     assert_eq!(
         action_cjk,
@@ -460,4 +460,33 @@ fn test_zoxide_paths_are_quoted_for_powershell() {
     let sugs = parse_zoxide_output("C:\\My Documents\n", "my");
     assert_eq!(sugs[0].name, r"'C:\My Documents'");
     assert_eq!(sugs[0].display, r"C:\My Documents");
+}
+
+#[test]
+fn test_deletion_counts_are_utf16_code_units() {
+    // PSReadLine removes one UTF-16 code unit per key, so a surrogate pair costs two keys on
+    // both sides of the cursor. `a🚀b` and `c🚀d` are 4 code units each (3 scalars each).
+    let action = replace_range("a🚀b", "c🚀d", "plain");
+    assert_eq!(
+        action,
+        ReplacementAction {
+            backspace_count: 4,
+            delete_count: 4,
+            insert_text: "plain ".to_string(),
+        }
+    );
+
+    let mut expected = vec![0x7f; 4];
+    for _ in 0..4 {
+        expected.extend_from_slice(b"\x1b[3~");
+    }
+    expected.extend_from_slice(b"plain ");
+    assert_eq!(action.to_bytes(), expected);
+
+    // Same rule when only text before the cursor is replaced.
+    assert_eq!(
+        calculate_replacement("🚀🚀", "done").backspace_count,
+        4,
+        "two surrogate pairs need four backspaces"
+    );
 }

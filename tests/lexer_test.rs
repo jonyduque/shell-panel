@@ -189,3 +189,12 @@ fn test_active_token_raw_keeps_quotes_and_escapes() {
     assert_eq!(active_token_raw("cmd --name=va"), "va");
     assert_eq!(active_token_raw("echo a` b"), "a` b");
 }
+
+#[test]
+fn test_active_token_raw_stops_at_line_breaks() {
+    // A multi-line PSReadLine buffer: the token must not span the previous physical line,
+    // otherwise the planned backspaces would erase across the newline.
+    assert_eq!(active_token_raw("if ($x) {\nGet-Ch"), "Get-Ch");
+    assert_eq!(active_token_raw("git commit\r\nsr"), "sr");
+    assert_eq!(active_token_raw("echo hi\n"), "");
+}
