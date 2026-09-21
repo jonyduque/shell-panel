@@ -47,7 +47,9 @@ impl Renderer {
             cursor_y.saturating_sub(page_len)
         } else {
             // Render below clamped to terminal boundary
-            cursor_y.saturating_add(1).min(term.rows.saturating_sub(page_len))
+            cursor_y
+                .saturating_add(1)
+                .min(term.rows.saturating_sub(page_len))
         };
 
         let col = (cursor_x + 1).min(term.cols);

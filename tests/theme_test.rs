@@ -1,20 +1,26 @@
 use shell_panel::core::config::{ColorConfig, Config, IconConfig};
 use shell_panel::engine::provider::{Suggestion, SuggestionKind};
-use shell_panel::ui::theme::{
-    format_suggestion_line, format_suggestion_line_with_theme, Theme,
-};
+use shell_panel::ui::theme::{format_suggestion_line, format_suggestion_line_with_theme, Theme};
 
 #[test]
 fn test_format_suggestion_line_with_icons() {
     let dir_sug = Suggestion::new("src/", "src/", Some("Directory".into()), 60)
         .with_kind(SuggestionKind::Directory);
     let formatted = format_suggestion_line(&dir_sug, false, 40);
-    assert!(formatted.contains("📁"), "Must contain folder icon: {}", formatted);
+    assert!(
+        formatted.contains("📁"),
+        "Must contain folder icon: {}",
+        formatted
+    );
 
     let cmd_sug = Suggestion::new("commit", "commit", Some("Commit changes".into()), 80)
         .with_kind(SuggestionKind::Subcommand);
     let formatted_cmd = format_suggestion_line(&cmd_sug, true, 40);
-    assert!(formatted_cmd.contains("🔹"), "Must contain subcommand icon: {}", formatted_cmd);
+    assert!(
+        formatted_cmd.contains("🔹"),
+        "Must contain subcommand icon: {}",
+        formatted_cmd
+    );
 }
 
 #[test]
@@ -111,10 +117,7 @@ fn test_theme_from_config_hex_and_256_colors() {
     config.colors.description_fg = "#abcdef".to_string();
 
     let theme = Theme::from_config(&config);
-    assert_eq!(
-        theme.selected_start,
-        "\x1b[48;2;17;34;51m\x1b[38;5;250m"
-    );
+    assert_eq!(theme.selected_start, "\x1b[48;2;17;34;51m\x1b[38;5;250m");
     assert_eq!(theme.desc_start, "\x1b[38;2;171;205;239m");
 }
 

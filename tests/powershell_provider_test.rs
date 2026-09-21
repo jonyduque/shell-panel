@@ -39,14 +39,17 @@ async fn test_powershell_provider_live_query() {
     let provider = PowerShellProvider::default();
     let sugs = provider.complete("Get-Ch", "").await;
     assert!(
-        sugs.iter().any(|s| s.name.eq_ignore_ascii_case("Get-ChildItem")),
+        sugs.iter()
+            .any(|s| s.name.eq_ignore_ascii_case("Get-ChildItem")),
         "Expected Get-ChildItem in completions, got: {:?}",
         sugs
     );
 
     let param_sugs = provider.complete("Get-ChildItem -", "").await;
     assert!(
-        param_sugs.iter().any(|s| s.name.eq_ignore_ascii_case("-Path")),
+        param_sugs
+            .iter()
+            .any(|s| s.name.eq_ignore_ascii_case("-Path")),
         "Expected -Path in parameter completions, got: {:?}",
         param_sugs
     );

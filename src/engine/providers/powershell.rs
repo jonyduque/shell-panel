@@ -61,21 +61,19 @@ pub struct PsCompletionResponse {
 /// Checks if a command name is a known or likely PowerShell alias.
 fn is_powershell_alias(name: &str) -> bool {
     const COMMON_ALIASES: &[&str] = &[
-        "cat", "cd", "chdir", "clc", "clear", "clhy", "cli", "clp", "cls", "clv",
-        "cns", "compare", "copy", "cp", "cpi", "curl", "cvpa", "dbp", "del", "diff",
-        "dir", "echo", "epal", "epcsv", "epsn", "erase", "etsn", "expy", "fc", "fhx",
-        "fl", "foreach", "ft", "fw", "gal", "gbp", "gc", "gcb", "gci", "gcm",
-        "gcs", "gdr", "gerr", "ghy", "gi", "gin", "gjb", "gl", "gm", "gmo",
-        "gp", "gps", "gpv", "group", "gsn", "gsnp", "gsv", "gtz", "gu", "gv",
-        "gwmi", "h", "history", "icm", "iex", "ihy", "ii", "ipal", "ipcsv", "ipmo",
-        "ipsn", "irm", "ise", "iwmi", "iwr", "kill", "lp", "ls", "man", "md",
-        "measure", "mi", "mount", "move", "mp", "mv", "nal", "ndr", "ni", "nmo",
-        "nsn", "nv", "ogv", "oh", "popd", "ps", "pushd", "pwd", "r", "rbp",
-        "rcjb", "rcsn", "rd", "rdr", "ren", "ri", "rjb", "rm", "rmdir", "rmo",
-        "rni", "rnp", "rp", "rsn", "rsnp", "ru", "rv", "rvpa", "rwmi", "sajb",
-        "sal", "saps", "sasv", "sbp", "sc", "scb", "select", "set", "shcm", "si",
-        "sl", "sleep", "sls", "sort", "sp", "spjb", "spps", "spsv", "start", "su",
-        "sv", "swmi", "tee", "trcm", "type", "wget", "where", "wjb", "write",
+        "cat", "cd", "chdir", "clc", "clear", "clhy", "cli", "clp", "cls", "clv", "cns", "compare",
+        "copy", "cp", "cpi", "curl", "cvpa", "dbp", "del", "diff", "dir", "echo", "epal", "epcsv",
+        "epsn", "erase", "etsn", "expy", "fc", "fhx", "fl", "foreach", "ft", "fw", "gal", "gbp",
+        "gc", "gcb", "gci", "gcm", "gcs", "gdr", "gerr", "ghy", "gi", "gin", "gjb", "gl", "gm",
+        "gmo", "gp", "gps", "gpv", "group", "gsn", "gsnp", "gsv", "gtz", "gu", "gv", "gwmi", "h",
+        "history", "icm", "iex", "ihy", "ii", "ipal", "ipcsv", "ipmo", "ipsn", "irm", "ise",
+        "iwmi", "iwr", "kill", "lp", "ls", "man", "md", "measure", "mi", "mount", "move", "mp",
+        "mv", "nal", "ndr", "ni", "nmo", "nsn", "nv", "ogv", "oh", "popd", "ps", "pushd", "pwd",
+        "r", "rbp", "rcjb", "rcsn", "rd", "rdr", "ren", "ri", "rjb", "rm", "rmdir", "rmo", "rni",
+        "rnp", "rp", "rsn", "rsnp", "ru", "rv", "rvpa", "rwmi", "sajb", "sal", "saps", "sasv",
+        "sbp", "sc", "scb", "select", "set", "shcm", "si", "sl", "sleep", "sls", "sort", "sp",
+        "spjb", "spps", "spsv", "start", "su", "sv", "swmi", "tee", "trcm", "type", "wget",
+        "where", "wjb", "write",
     ];
 
     let lower = name.to_lowercase();
@@ -305,8 +303,8 @@ impl PowerShellProvider {
 
     /// Creates a new `PowerShellProvider` with a custom binary path.
     pub fn with_binary(binary_path: impl Into<String>) -> Self {
-        let script_path = get_ps_worker_script_path()
-            .unwrap_or_else(|_| PathBuf::from("assets/psWorker.ps1"));
+        let script_path =
+            get_ps_worker_script_path().unwrap_or_else(|_| PathBuf::from("assets/psWorker.ps1"));
         let provider = Self {
             binary_path: binary_path.into(),
             script_path,

@@ -82,5 +82,9 @@ fn test_load_or_default_valid_file() {
 fn test_default_sample_toml_validity() {
     let sample = default_sample_toml();
     let parsed: Result<Config, _> = toml::from_str(sample);
-    assert!(parsed.is_ok(), "Sample TOML must parse cleanly: {:?}", parsed.err());
+    assert!(
+        parsed.is_ok(),
+        "Sample TOML must parse cleanly: {:?}",
+        parsed.err()
+    );
 }

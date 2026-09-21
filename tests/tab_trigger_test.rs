@@ -95,8 +95,7 @@ fn test_file_provider_gating_logic_with_options() {
     let opt_sugs = vec![
         Suggestion::new("--help", "--help", Some("Show help".into()), 75)
             .with_kind(SuggestionKind::Option),
-        Suggestion::new("-v", "-v", Some("Verbose".into()), 75)
-            .with_kind(SuggestionKind::Option),
+        Suggestion::new("-v", "-v", Some("Verbose".into()), 75).with_kind(SuggestionKind::Option),
     ];
 
     // Options must NOT include files for plain argument/option tokens
@@ -113,10 +112,11 @@ fn test_file_provider_gating_logic_with_options() {
 
 #[test]
 fn test_file_provider_gating_logic_with_powershell_cmdlets() {
-    let cmdlet_sugs = vec![
-        Suggestion::new("Get-ChildItem", "Get-ChildItem", Some("Cmdlet".into()), 80)
-            .with_kind(SuggestionKind::PowerShellCmdlet),
-    ];
+    let cmdlet_sugs =
+        vec![
+            Suggestion::new("Get-ChildItem", "Get-ChildItem", Some("Cmdlet".into()), 80)
+                .with_kind(SuggestionKind::PowerShellCmdlet),
+        ];
 
     // Cmdlets must NOT include files for plain cmdlet query tokens
     assert!(!should_include_files("Get-Ch", &cmdlet_sugs));
@@ -136,16 +136,12 @@ fn test_file_provider_gating_logic_without_gating_suggestions() {
     assert!(should_include_files("random", &[]));
 
     // Other kinds (e.g. Directory / File / Other)
-    let file_sugs = vec![
-        Suggestion::new("Cargo.toml", "Cargo.toml", None, 50)
-            .with_kind(SuggestionKind::File),
-    ];
+    let file_sugs =
+        vec![Suggestion::new("Cargo.toml", "Cargo.toml", None, 50).with_kind(SuggestionKind::File)];
     assert!(should_include_files("Cargo", &file_sugs));
 
-    let other_sugs = vec![
-        Suggestion::new("$env:PATH", "$env:PATH", None, 70)
-            .with_kind(SuggestionKind::Other),
-    ];
+    let other_sugs =
+        vec![Suggestion::new("$env:PATH", "$env:PATH", None, 70).with_kind(SuggestionKind::Other)];
     assert!(should_include_files("PATH", &other_sugs));
 }
 
@@ -154,14 +150,17 @@ async fn test_powershell_provider_in_tab_trigger() {
     let provider = PowerShellProvider::new(ShellType::Pwsh);
     let sugs = provider.complete("Get-Ch", "").await;
     assert!(
-        sugs.iter().any(|s| s.name.eq_ignore_ascii_case("Get-ChildItem")),
+        sugs.iter()
+            .any(|s| s.name.eq_ignore_ascii_case("Get-ChildItem")),
         "Expected Get-ChildItem in completions, got: {:?}",
         sugs
     );
 
     let param_sugs = provider.complete("Get-ChildItem -", "").await;
     assert!(
-        param_sugs.iter().any(|s| s.name.eq_ignore_ascii_case("-Path")),
+        param_sugs
+            .iter()
+            .any(|s| s.name.eq_ignore_ascii_case("-Path")),
         "Expected -Path in parameter completions, got: {:?}",
         param_sugs
     );
@@ -180,7 +179,11 @@ fn test_priority_sorting_and_deduplication() {
             .with_kind(SuggestionKind::Subcommand),
     ];
 
-    suggestions.sort_by(|a, b| b.priority.cmp(&a.priority).then_with(|| a.name.cmp(&b.name)));
+    suggestions.sort_by(|a, b| {
+        b.priority
+            .cmp(&a.priority)
+            .then_with(|| a.name.cmp(&b.name))
+    });
     let mut seen = HashSet::new();
     suggestions.retain(|s| seen.insert(s.name.clone()));
 

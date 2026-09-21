@@ -10,12 +10,7 @@ pub struct ConPtySession {
 
 impl ConPtySession {
     /// Spawns a ConPTY session running the specified shell with the initialization script.
-    pub fn spawn(
-        shell_type: ShellType,
-        cols: u16,
-        rows: u16,
-        script_path: &Path,
-    ) -> Result<Self> {
+    pub fn spawn(shell_type: ShellType, cols: u16, rows: u16, script_path: &Path) -> Result<Self> {
         let pty_system = native_pty_system();
         let pair = pty_system.openpty(PtySize {
             rows,
@@ -37,10 +32,12 @@ impl ConPtySession {
         let escaped_path = script_path.to_string_lossy().replace('\'', "''");
         cmd.arg(format!("try {{ . '{}' }} catch {{}}", escaped_path));
 
-        let child = pair
-            .slave
-            .spawn_command(cmd)
-            .with_context(|| format!("Falha ao iniciar processo da shell {}", shell_type.executable_name()))?;
+        let child = pair.slave.spawn_command(cmd).with_context(|| {
+            format!(
+                "Falha ao iniciar processo da shell {}",
+                shell_type.executable_name()
+            )
+        })?;
 
         Ok(Self { pair, child })
     }

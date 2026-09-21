@@ -75,8 +75,8 @@ impl Theme {
             }
         };
 
-        let desc_start = parse_color_fg(&config.colors.description_fg)
-            .unwrap_or_else(|| "\x1b[90m".to_string());
+        let desc_start =
+            parse_color_fg(&config.colors.description_fg).unwrap_or_else(|| "\x1b[90m".to_string());
 
         let unselected_fg_start = parse_color_fg(&config.colors.unselected_fg).unwrap_or_default();
 
@@ -151,7 +151,13 @@ pub fn format_suggestion_line_with_theme(
     max_width: usize,
     theme: &Theme,
 ) -> String {
-    format_suggestion_line_with_theme_and_min_width(sug, theme, selected, 30.min(max_width), max_width)
+    format_suggestion_line_with_theme_and_min_width(
+        sug,
+        theme,
+        selected,
+        30.min(max_width),
+        max_width,
+    )
 }
 
 /// Formats a suggestion with custom minimum and maximum column widths using a specific theme.
@@ -187,7 +193,10 @@ pub fn format_suggestion_line_with_theme_and_min_width(
             plain.push_str(&" ".repeat(min_width - plain_width));
         }
         let truncated = truncate_to_width(&plain, max_width);
-        format!("{}{}{}", theme.selected_start, truncated, theme.selected_end)
+        format!(
+            "{}{}{}",
+            theme.selected_start, truncated, theme.selected_end
+        )
     } else if let Some(desc) = &sug.description {
         let desc_with_gap = format!("  {}", desc);
         let desc_width = desc_with_gap.as_str().width();
@@ -202,11 +211,7 @@ pub fn format_suggestion_line_with_theme_and_min_width(
             if theme.unselected_fg_start.is_empty() {
                 format!(
                     "{}{}{}{}{}",
-                    label,
-                    theme.desc_start,
-                    desc_with_gap,
-                    theme.desc_end,
-                    padding
+                    label, theme.desc_start, desc_with_gap, theme.desc_end, padding
                 )
             } else {
                 format!(
@@ -226,10 +231,7 @@ pub fn format_suggestion_line_with_theme_and_min_width(
             if theme.unselected_fg_start.is_empty() {
                 format!(
                     "{}{}{}{}",
-                    label,
-                    theme.desc_start,
-                    truncated_desc,
-                    theme.desc_end
+                    label, theme.desc_start, truncated_desc, theme.desc_end
                 )
             } else {
                 format!(

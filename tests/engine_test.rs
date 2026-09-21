@@ -136,9 +136,18 @@ async fn test_file_provider_listing() {
 
     create_dir_all(&temp_dir).unwrap();
     create_dir_all(temp_dir.join("subfolder")).unwrap();
-    File::create(temp_dir.join("file1.txt")).unwrap().write_all(b"test1").unwrap();
-    File::create(temp_dir.join("file2.log")).unwrap().write_all(b"test2").unwrap();
-    File::create(temp_dir.join("subfolder").join("nested.rs")).unwrap().write_all(b"fn main() {}").unwrap();
+    File::create(temp_dir.join("file1.txt"))
+        .unwrap()
+        .write_all(b"test1")
+        .unwrap();
+    File::create(temp_dir.join("file2.log"))
+        .unwrap()
+        .write_all(b"test2")
+        .unwrap();
+    File::create(temp_dir.join("subfolder").join("nested.rs"))
+        .unwrap()
+        .write_all(b"fn main() {}")
+        .unwrap();
 
     let provider = FileProvider::new();
     assert_eq!(provider.name(), "files");

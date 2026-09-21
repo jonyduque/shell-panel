@@ -17,7 +17,11 @@ fn test_embedded_script_and_path_resolution() {
     assert!(SHELL_INTEGRATION_SCRIPT.contains("6973;CWD;"));
 
     let path = get_shell_integration_path().expect("Failed to get shell integration script path");
-    assert!(path.is_file(), "Script path must be a valid file: {:?}", path);
+    assert!(
+        path.is_file(),
+        "Script path must be a valid file: {:?}",
+        path
+    );
 }
 
 #[tokio::test]
@@ -36,7 +40,9 @@ async fn test_default_json_spec_provider_git_and_docker() {
     let docker_sugs = provider.complete("docker r", "").await;
     assert!(!docker_sugs.is_empty());
     assert!(docker_sugs.iter().any(|s| s.name == "run"));
-    assert!(docker_sugs.iter().any(|s| s.name == "restart" || s.name == "rm" || s.name == "rmi"));
+    assert!(docker_sugs
+        .iter()
+        .any(|s| s.name == "restart" || s.name == "rm" || s.name == "rmi"));
 }
 
 #[test]
@@ -57,8 +63,8 @@ fn test_e2e_pty_powershell_session() {
     assert!(script_path.is_file());
 
     let shell = detect_shell(None);
-    let mut session = ConPtySession::spawn(shell, 120, 30, &script_path)
-        .expect("Failed to spawn ConPty session");
+    let mut session =
+        ConPtySession::spawn(shell, 120, 30, &script_path).expect("Failed to spawn ConPty session");
 
     let mut reader = session
         .pair
@@ -132,7 +138,10 @@ fn test_e2e_pty_powershell_session() {
     writer.flush().expect("Failed to flush PTY writer");
 
     // Assert process exits cleanly
-    let exit_status = session.child.wait().expect("Failed to wait on child process");
+    let exit_status = session
+        .child
+        .wait()
+        .expect("Failed to wait on child process");
     assert!(
         exit_status.success(),
         "Expected clean exit (exit code 0), but got: {:?}",

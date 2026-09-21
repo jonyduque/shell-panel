@@ -84,7 +84,11 @@ impl HeadlessTerminal {
         let mut result = String::new();
         'rows: for row in prompt_row..=cursor_row {
             let start_col = if row == prompt_row { prompt_end_x } else { 0 };
-            let end_col = if row == cursor_row { cursor_col } else { self.cols };
+            let end_col = if row == cursor_row {
+                cursor_col
+            } else {
+                self.cols
+            };
 
             for col in start_col..end_col {
                 if let Some(cell) = screen.cell(row, col) {

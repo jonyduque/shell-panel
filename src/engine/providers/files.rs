@@ -67,21 +67,14 @@ impl CompletionProvider for FileProvider {
                 let name = format!("{}{}/", dir_prefix, file_name);
                 let display = format!("{}{}/", dir_prefix, file_name);
                 suggestions.push(
-                    Suggestion::new(
-                        name,
-                        display,
-                        Some("Directory".into()),
-                        60,
-                    )
-                    .with_kind(SuggestionKind::Directory),
+                    Suggestion::new(name, display, Some("Directory".into()), 60)
+                        .with_kind(SuggestionKind::Directory),
                 );
             } else {
                 let name = format!("{}{}", dir_prefix, file_name);
                 let display = format!("{}{}", dir_prefix, file_name);
-                suggestions.push(
-                    Suggestion::new(name, display, None, 50)
-                        .with_kind(SuggestionKind::File),
-                );
+                suggestions
+                    .push(Suggestion::new(name, display, None, 50).with_kind(SuggestionKind::File));
             }
         }
 

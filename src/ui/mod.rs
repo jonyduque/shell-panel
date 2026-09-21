@@ -14,4 +14,3 @@ pub use theme::{
     format_suggestion_line_with_min_width, format_suggestion_line_with_theme,
     format_suggestion_line_with_theme_and_min_width, Theme, SELECTED_PREFIX, UNSELECTED_PREFIX,
 };
-

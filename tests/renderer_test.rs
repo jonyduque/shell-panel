@@ -109,8 +109,18 @@ fn test_render_dropdown_below_cursor_and_ansi_sequences() {
     let term = HeadlessTerminal::new(80, 24);
     let mut state = SuggestionState::new(5);
     let suggestions = vec![
-        Suggestion::new("git status", "git status", Some("Show working tree status".to_string()), 100),
-        Suggestion::new("git switch", "git switch", Some("Switch branches".to_string()), 90),
+        Suggestion::new(
+            "git status",
+            "git status",
+            Some("Show working tree status".to_string()),
+            100,
+        ),
+        Suggestion::new(
+            "git switch",
+            "git switch",
+            Some("Switch branches".to_string()),
+            90,
+        ),
     ];
     state.set_suggestions(suggestions);
 
@@ -118,8 +128,15 @@ fn test_render_dropdown_below_cursor_and_ansi_sequences() {
     let cursor_x = 4;
     let cursor_y = 5;
 
-    let layout = Renderer::render_dropdown(&state, &term, &Theme::default(), cursor_x, cursor_y, &mut out)
-        .expect("render_dropdown succeeds");
+    let layout = Renderer::render_dropdown(
+        &state,
+        &term,
+        &Theme::default(),
+        cursor_x,
+        cursor_y,
+        &mut out,
+    )
+    .expect("render_dropdown succeeds");
 
     assert_eq!(
         layout,
@@ -140,10 +157,16 @@ fn test_render_dropdown_below_cursor_and_ansi_sequences() {
     assert!(rendered.contains("\x1b[?25h"), "must show cursor");
 
     // Verify active line inverted highlight (\x1b[7m)
-    assert!(rendered.contains("\x1b[7m"), "must contain highlight sequence for active item");
+    assert!(
+        rendered.contains("\x1b[7m"),
+        "must contain highlight sequence for active item"
+    );
 
     // Verify position moves to row 7 (start_row 6 + 1) col 5 (cursor_x 4 + 1)
-    assert!(rendered.contains("\x1b[7;5H"), "must move to start_row + 1 at col");
+    assert!(
+        rendered.contains("\x1b[7;5H"),
+        "must move to start_row + 1 at col"
+    );
 }
 
 #[test]
@@ -159,8 +182,15 @@ fn test_render_dropdown_above_cursor_when_at_bottom() {
     let cursor_x = 0;
     let cursor_y = 23; // Bottom row in 24-row terminal (0-indexed: 0..23)
 
-    let layout = Renderer::render_dropdown(&state, &term, &Theme::default(), cursor_x, cursor_y, &mut out)
-        .expect("render_dropdown succeeds");
+    let layout = Renderer::render_dropdown(
+        &state,
+        &term,
+        &Theme::default(),
+        cursor_x,
+        cursor_y,
+        &mut out,
+    )
+    .expect("render_dropdown succeeds");
 
     // Should render above: start_row = 23 - 5 = 18, row_count = 5
     assert_eq!(
@@ -269,10 +299,20 @@ fn test_render_dropdown_with_custom_theme() {
     let term = HeadlessTerminal::new(80, 24);
     let mut state = SuggestionState::new(5);
     let suggestions = vec![
-        Suggestion::new("git status", "git status", Some("Show status".to_string()), 100)
-            .with_kind(SuggestionKind::Command),
-        Suggestion::new("git switch", "git switch", Some("Switch branches".to_string()), 90)
-            .with_kind(SuggestionKind::Subcommand),
+        Suggestion::new(
+            "git status",
+            "git status",
+            Some("Show status".to_string()),
+            100,
+        )
+        .with_kind(SuggestionKind::Command),
+        Suggestion::new(
+            "git switch",
+            "git switch",
+            Some("Switch branches".to_string()),
+            90,
+        )
+        .with_kind(SuggestionKind::Subcommand),
     ];
     state.set_suggestions(suggestions);
 
@@ -300,11 +340,29 @@ fn test_render_dropdown_with_custom_theme() {
     let rendered = String::from_utf8(out).expect("valid utf-8 output");
 
     // Check custom theme colors & prefixes & icons
-    assert!(rendered.contains("\x1b[45m\x1b[37m"), "must have magenta bg and white fg for selected");
-    assert!(rendered.contains(">> "), "must contain custom selected prefix");
-    assert!(rendered.contains("CMD: "), "must contain custom command icon");
+    assert!(
+        rendered.contains("\x1b[45m\x1b[37m"),
+        "must have magenta bg and white fg for selected"
+    );
+    assert!(
+        rendered.contains(">> "),
+        "must contain custom selected prefix"
+    );
+    assert!(
+        rendered.contains("CMD: "),
+        "must contain custom command icon"
+    );
     assert!(rendered.contains("git status"), "must contain command text");
-    assert!(rendered.contains("SUB: "), "must contain custom subcommand icon");
-    assert!(rendered.contains("\x1b[36m"), "must have unselected cyan fg");
-    assert!(rendered.contains("\x1b[33m"), "must have description yellow fg");
+    assert!(
+        rendered.contains("SUB: "),
+        "must contain custom subcommand icon"
+    );
+    assert!(
+        rendered.contains("\x1b[36m"),
+        "must have unselected cyan fg"
+    );
+    assert!(
+        rendered.contains("\x1b[33m"),
+        "must have description yellow fg"
+    );
 }

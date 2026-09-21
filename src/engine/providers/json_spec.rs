@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::engine::lexer::lex_command_line;
 use crate::engine::provider::{CompletionProvider, Suggestion, SuggestionKind};
@@ -122,7 +122,10 @@ impl CompletionProvider for JsonSpecProvider {
 
     fn can_handle(&self, cmd: &str) -> bool {
         self.specs.contains_key(cmd)
-            || self.specs.values().any(|s| s.name.eq_ignore_ascii_case(cmd))
+            || self
+                .specs
+                .values()
+                .any(|s| s.name.eq_ignore_ascii_case(cmd))
     }
 
     async fn complete(&self, cmd_line: &str, _cwd: &str) -> Vec<Suggestion> {
@@ -132,11 +135,11 @@ impl CompletionProvider for JsonSpecProvider {
         }
 
         let root_cmd = &tokens[0].text;
-        let spec = match self
-            .specs
-            .get(root_cmd.as_str())
-            .or_else(|| self.specs.values().find(|s| s.name.eq_ignore_ascii_case(root_cmd)))
-        {
+        let spec = match self.specs.get(root_cmd.as_str()).or_else(|| {
+            self.specs
+                .values()
+                .find(|s| s.name.eq_ignore_ascii_case(root_cmd))
+        }) {
             Some(s) => s,
             None => return Vec::new(),
         };
@@ -152,16 +155,15 @@ impl CompletionProvider for JsonSpecProvider {
             let mut results = Vec::new();
             for subcmd in curr_subcommands {
                 results.push(
-                    Suggestion::new(
-                        &subcmd.name,
-                        &subcmd.name,
-                        subcmd.description.clone(),
-                        80,
-                    )
-                    .with_kind(SuggestionKind::Subcommand),
+                    Suggestion::new(&subcmd.name, &subcmd.name, subcmd.description.clone(), 80)
+                        .with_kind(SuggestionKind::Subcommand),
                 );
             }
-            results.sort_by(|a, b| b.priority.cmp(&a.priority).then_with(|| a.name.cmp(&b.name)));
+            results.sort_by(|a, b| {
+                b.priority
+                    .cmp(&a.priority)
+                    .then_with(|| a.name.cmp(&b.name))
+            });
             return results;
         }
 
@@ -188,13 +190,8 @@ impl CompletionProvider for JsonSpecProvider {
                 for opt_name in &opt.name {
                     if opt_name.to_lowercase().starts_with(&active_lower) {
                         suggestions.push(
-                            Suggestion::new(
-                                opt_name,
-                                opt_name,
-                                opt.description.clone(),
-                                75,
-                            )
-                            .with_kind(SuggestionKind::Option),
+                            Suggestion::new(opt_name, opt_name, opt.description.clone(), 75)
+                                .with_kind(SuggestionKind::Option),
                         );
                     }
                 }
@@ -203,19 +200,18 @@ impl CompletionProvider for JsonSpecProvider {
             for subcmd in curr_subcommands {
                 if subcmd.name.to_lowercase().starts_with(&active_lower) {
                     suggestions.push(
-                        Suggestion::new(
-                            &subcmd.name,
-                            &subcmd.name,
-                            subcmd.description.clone(),
-                            80,
-                        )
-                        .with_kind(SuggestionKind::Subcommand),
+                        Suggestion::new(&subcmd.name, &subcmd.name, subcmd.description.clone(), 80)
+                            .with_kind(SuggestionKind::Subcommand),
                     );
                 }
             }
         }
 
-        suggestions.sort_by(|a, b| b.priority.cmp(&a.priority).then_with(|| a.name.cmp(&b.name)));
+        suggestions.sort_by(|a, b| {
+            b.priority
+                .cmp(&a.priority)
+                .then_with(|| a.name.cmp(&b.name))
+        });
         suggestions
     }
 }

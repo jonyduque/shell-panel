@@ -12,15 +12,24 @@ fn test_parse_osc_sequences() {
     assert_eq!(parse_osc_sequence("1337;Other"), None);
     assert_eq!(parse_osc_sequence("6973;UNKNOWN"), None);
     assert_eq!(parse_osc_sequence(""), None);
-    assert_eq!(parse_osc_sequence("6973;CWD;"), Some(OscEvent::Cwd("".to_string())));
+    assert_eq!(
+        parse_osc_sequence("6973;CWD;"),
+        Some(OscEvent::Cwd("".to_string()))
+    );
 }
 
 #[test]
 fn test_unescape_cwd() {
     assert_eq!(unescape_cwd(r"C:\\Users\\test"), r"C:\Users\test");
     assert_eq!(unescape_cwd(r"C:\Users\test"), r"C:\Users\test");
-    assert_eq!(unescape_cwd(r"path\x3bwith\x3bsemicolon"), "path;with;semicolon");
-    assert_eq!(unescape_cwd(r"path\x5cwith\x5cbackslash"), r"path\with\backslash");
+    assert_eq!(
+        unescape_cwd(r"path\x3bwith\x3bsemicolon"),
+        "path;with;semicolon"
+    );
+    assert_eq!(
+        unescape_cwd(r"path\x5cwith\x5cbackslash"),
+        r"path\with\backslash"
+    );
     assert_eq!(unescape_cwd(r"mixed\\path\x3btest"), r"mixed\path;test");
 }
 

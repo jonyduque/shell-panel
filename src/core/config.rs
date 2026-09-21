@@ -182,7 +182,11 @@ impl Config {
                         match toml::from_str(&content) {
                             Ok(cfg) => return cfg,
                             Err(err) => {
-                                tracing::warn!("Failed to parse default config file at {:?}: {}", path, err);
+                                tracing::warn!(
+                                    "Failed to parse default config file at {:?}: {}",
+                                    path,
+                                    err
+                                );
                             }
                         }
                     }
@@ -194,8 +198,7 @@ impl Config {
 }
 
 pub fn default_config_path() -> Option<PathBuf> {
-    let base = std::env::var_os("USERPROFILE")
-        .or_else(|| std::env::var_os("HOME"))?;
+    let base = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))?;
     Some(PathBuf::from(base).join(".config").join("shell-panel.toml"))
 }
 

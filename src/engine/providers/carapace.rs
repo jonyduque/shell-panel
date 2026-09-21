@@ -109,10 +109,11 @@ impl CompletionProvider for CarapaceProvider {
             cmd.arg(&token.text);
         }
 
-        let output = match tokio::time::timeout(std::time::Duration::from_millis(200), cmd.output()).await {
-            Ok(Ok(out)) if out.status.success() => out,
-            _ => return Vec::new(),
-        };
+        let output =
+            match tokio::time::timeout(std::time::Duration::from_millis(200), cmd.output()).await {
+                Ok(Ok(out)) if out.status.success() => out,
+                _ => return Vec::new(),
+            };
 
         let stdout_str = String::from_utf8_lossy(&output.stdout);
         parse_carapace_json(&stdout_str)

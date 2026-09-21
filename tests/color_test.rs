@@ -16,10 +16,19 @@ fn test_parse_standard_colors_fg() {
     assert_eq!(parse_color_fg("bright_black"), Some("\x1b[90m".to_string()));
     assert_eq!(parse_color_fg("bright_red"), Some("\x1b[91m".to_string()));
     assert_eq!(parse_color_fg("bright_green"), Some("\x1b[92m".to_string()));
-    assert_eq!(parse_color_fg("bright_yellow"), Some("\x1b[93m".to_string()));
+    assert_eq!(
+        parse_color_fg("bright_yellow"),
+        Some("\x1b[93m".to_string())
+    );
     assert_eq!(parse_color_fg("bright_blue"), Some("\x1b[94m".to_string()));
-    assert_eq!(parse_color_fg("bright_magenta"), Some("\x1b[95m".to_string()));
-    assert_eq!(parse_color_fg("bright_purple"), Some("\x1b[95m".to_string()));
+    assert_eq!(
+        parse_color_fg("bright_magenta"),
+        Some("\x1b[95m".to_string())
+    );
+    assert_eq!(
+        parse_color_fg("bright_purple"),
+        Some("\x1b[95m".to_string())
+    );
     assert_eq!(parse_color_fg("bright_cyan"), Some("\x1b[96m".to_string()));
     assert_eq!(parse_color_fg("bright_white"), Some("\x1b[97m".to_string()));
 }
@@ -37,14 +46,29 @@ fn test_parse_standard_colors_bg() {
     assert_eq!(parse_color_bg("white"), Some("\x1b[47m".to_string()));
     assert_eq!(parse_color_bg("gray"), Some("\x1b[100m".to_string()));
     assert_eq!(parse_color_bg("grey"), Some("\x1b[100m".to_string()));
-    assert_eq!(parse_color_bg("bright_black"), Some("\x1b[100m".to_string()));
+    assert_eq!(
+        parse_color_bg("bright_black"),
+        Some("\x1b[100m".to_string())
+    );
     assert_eq!(parse_color_bg("bright_red"), Some("\x1b[101m".to_string()));
-    assert_eq!(parse_color_bg("bright_green"), Some("\x1b[102m".to_string()));
-    assert_eq!(parse_color_bg("bright_yellow"), Some("\x1b[103m".to_string()));
+    assert_eq!(
+        parse_color_bg("bright_green"),
+        Some("\x1b[102m".to_string())
+    );
+    assert_eq!(
+        parse_color_bg("bright_yellow"),
+        Some("\x1b[103m".to_string())
+    );
     assert_eq!(parse_color_bg("bright_blue"), Some("\x1b[104m".to_string()));
-    assert_eq!(parse_color_bg("bright_magenta"), Some("\x1b[105m".to_string()));
+    assert_eq!(
+        parse_color_bg("bright_magenta"),
+        Some("\x1b[105m".to_string())
+    );
     assert_eq!(parse_color_bg("bright_cyan"), Some("\x1b[106m".to_string()));
-    assert_eq!(parse_color_bg("bright_white"), Some("\x1b[107m".to_string()));
+    assert_eq!(
+        parse_color_bg("bright_white"),
+        Some("\x1b[107m".to_string())
+    );
 }
 
 #[test]
@@ -72,15 +96,36 @@ fn test_parse_special_modes() {
 
 #[test]
 fn test_parse_hex_colors() {
-    assert_eq!(parse_color_fg("#ff0000"), Some("\x1b[38;2;255;0;0m".to_string()));
-    assert_eq!(parse_color_bg("#00ff00"), Some("\x1b[48;2;0;255;0m".to_string()));
-    assert_eq!(parse_color_fg("#0000ff"), Some("\x1b[38;2;0;0;255m".to_string()));
-    assert_eq!(parse_color_fg("#123456"), Some("\x1b[38;2;18;52;86m".to_string()));
-    assert_eq!(parse_color_fg("#AbCdEf"), Some("\x1b[38;2;171;205;239m".to_string()));
+    assert_eq!(
+        parse_color_fg("#ff0000"),
+        Some("\x1b[38;2;255;0;0m".to_string())
+    );
+    assert_eq!(
+        parse_color_bg("#00ff00"),
+        Some("\x1b[48;2;0;255;0m".to_string())
+    );
+    assert_eq!(
+        parse_color_fg("#0000ff"),
+        Some("\x1b[38;2;0;0;255m".to_string())
+    );
+    assert_eq!(
+        parse_color_fg("#123456"),
+        Some("\x1b[38;2;18;52;86m".to_string())
+    );
+    assert_eq!(
+        parse_color_fg("#AbCdEf"),
+        Some("\x1b[38;2;171;205;239m".to_string())
+    );
 
     // 3-digit hex (#RGB expands to #RRGGBB)
-    assert_eq!(parse_color_fg("#f0a"), Some("\x1b[38;2;255;0;170m".to_string()));
-    assert_eq!(parse_color_bg("#fff"), Some("\x1b[48;2;255;255;255m".to_string()));
+    assert_eq!(
+        parse_color_fg("#f0a"),
+        Some("\x1b[38;2;255;0;170m".to_string())
+    );
+    assert_eq!(
+        parse_color_bg("#fff"),
+        Some("\x1b[48;2;255;255;255m".to_string())
+    );
     assert_eq!(parse_color_bg("#000"), Some("\x1b[48;2;0;0;0m".to_string()));
 }
 

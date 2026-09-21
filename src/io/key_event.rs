@@ -16,7 +16,9 @@ pub fn classify_key(event: &KeyEvent) -> ActionKey {
     }
 
     // Do not hijack Ctrl or Alt key combinations
-    if event.modifiers.contains(KeyModifiers::CONTROL) || event.modifiers.contains(KeyModifiers::ALT) {
+    if event.modifiers.contains(KeyModifiers::CONTROL)
+        || event.modifiers.contains(KeyModifiers::ALT)
+    {
         return ActionKey::Passthrough;
     }
 

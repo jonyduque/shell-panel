@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, KeyEventState};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use shell_panel::io::filter::sanitize_output_stream;
 use shell_panel::io::key_event::{classify_key, encode_key_event, ActionKey};
 use shell_panel::io::raw_mode::RawModeGuard;
@@ -44,10 +44,18 @@ fn test_classify_tab_backtab_and_esc() {
 
 #[test]
 fn test_classify_ctrl_and_alt_are_passthrough() {
-    let ctrl_c = make_key_event(KeyCode::Char('c'), KeyModifiers::CONTROL, KeyEventKind::Press);
+    let ctrl_c = make_key_event(
+        KeyCode::Char('c'),
+        KeyModifiers::CONTROL,
+        KeyEventKind::Press,
+    );
     assert_eq!(classify_key(&ctrl_c), ActionKey::Passthrough);
 
-    let ctrl_d = make_key_event(KeyCode::Char('d'), KeyModifiers::CONTROL, KeyEventKind::Press);
+    let ctrl_d = make_key_event(
+        KeyCode::Char('d'),
+        KeyModifiers::CONTROL,
+        KeyEventKind::Press,
+    );
     assert_eq!(classify_key(&ctrl_d), ActionKey::Passthrough);
 
     let alt_down = make_key_event(KeyCode::Down, KeyModifiers::ALT, KeyEventKind::Press);
@@ -118,7 +126,11 @@ fn test_encode_key_event() {
     assert_eq!(encode_key_event(&esc), b"\x1b");
 
     // Ctrl+C -> 0x03
-    let ctrl_c = make_key_event(KeyCode::Char('c'), KeyModifiers::CONTROL, KeyEventKind::Press);
+    let ctrl_c = make_key_event(
+        KeyCode::Char('c'),
+        KeyModifiers::CONTROL,
+        KeyEventKind::Press,
+    );
     assert_eq!(encode_key_event(&ctrl_c), vec![0x03]);
 
     // Arrows
@@ -137,26 +149,16 @@ fn test_backspace_emits_del_0x7f() {
 
 #[test]
 fn test_ctrl_shift_arrows_emit_xterm_code_6() {
-    let right_ctrl_shift = KeyEvent::new(
-        KeyCode::Right,
-        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-    );
+    let right_ctrl_shift =
+        KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL | KeyModifiers::SHIFT);
     assert_eq!(encode_key_event(&right_ctrl_shift), b"\x1b[1;6C".to_vec());
 
-    let left_ctrl_shift = KeyEvent::new(
-        KeyCode::Left,
-        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-    );
+    let left_ctrl_shift = KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL | KeyModifiers::SHIFT);
     assert_eq!(encode_key_event(&left_ctrl_shift), b"\x1b[1;6D".to_vec());
 
     let home_shift = KeyEvent::new(KeyCode::Home, KeyModifiers::SHIFT);
     assert_eq!(encode_key_event(&home_shift), b"\x1b[1;2H".to_vec());
 
-    let end_ctrl_shift = KeyEvent::new(
-        KeyCode::End,
-        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-    );
+    let end_ctrl_shift = KeyEvent::new(KeyCode::End, KeyModifiers::CONTROL | KeyModifiers::SHIFT);
     assert_eq!(encode_key_event(&end_ctrl_shift), b"\x1b[1;6F".to_vec());
 }
-
-

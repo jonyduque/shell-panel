@@ -62,13 +62,8 @@ pub fn parse_zoxide_output(output: &str, prefix: &str) -> Vec<Suggestion> {
 
         if matches {
             suggestions.push(
-                Suggestion::new(
-                    trimmed,
-                    trimmed,
-                    Some("Zoxide Directory".into()),
-                    70,
-                )
-                .with_kind(SuggestionKind::Directory),
+                Suggestion::new(trimmed, trimmed, Some("Zoxide Directory".into()), 70)
+                    .with_kind(SuggestionKind::Directory),
             );
         }
     }
@@ -83,7 +78,9 @@ impl CompletionProvider for ZoxideProvider {
     }
 
     fn can_handle(&self, cmd: &str) -> bool {
-        cmd.eq_ignore_ascii_case("cd") || cmd.eq_ignore_ascii_case("z") || cmd.eq_ignore_ascii_case("zi")
+        cmd.eq_ignore_ascii_case("cd")
+            || cmd.eq_ignore_ascii_case("z")
+            || cmd.eq_ignore_ascii_case("zi")
     }
 
     async fn complete(&self, cmd_line: &str, _cwd: &str) -> Vec<Suggestion> {
@@ -98,10 +95,11 @@ impl CompletionProvider for ZoxideProvider {
             .arg("-l")
             .output();
 
-        let output = match tokio::time::timeout(std::time::Duration::from_millis(150), query_future).await {
-            Ok(Ok(out)) if out.status.success() => out,
-            _ => return Vec::new(),
-        };
+        let output =
+            match tokio::time::timeout(std::time::Duration::from_millis(150), query_future).await {
+                Ok(Ok(out)) if out.status.success() => out,
+                _ => return Vec::new(),
+            };
 
         let stdout_str = String::from_utf8_lossy(&output.stdout);
         parse_zoxide_output(&stdout_str, prefix)

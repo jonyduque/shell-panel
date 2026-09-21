@@ -77,7 +77,9 @@ pub fn default_git_spec() -> FigSpec {
                     },
                     FigOption {
                         name: vec!["-b".to_string(), "--branch".to_string()],
-                        description: Some("Show the branch and tracking info even in short-format".to_string()),
+                        description: Some(
+                            "Show the branch and tracking info even in short-format".to_string(),
+                        ),
                         args: None,
                     },
                 ],
@@ -94,7 +96,9 @@ pub fn default_git_spec() -> FigSpec {
                     },
                     FigOption {
                         name: vec!["-a".to_string(), "--all".to_string()],
-                        description: Some("Automatically stage modified and deleted files".to_string()),
+                        description: Some(
+                            "Automatically stage modified and deleted files".to_string(),
+                        ),
                         args: None,
                     },
                     FigOption {
@@ -124,14 +128,14 @@ pub fn default_git_spec() -> FigSpec {
             },
             FigSubcommand {
                 name: "pull".to_string(),
-                description: Some("Fetch from and integrate with another repository or branch".to_string()),
-                options: vec![
-                    FigOption {
-                        name: vec!["--rebase".to_string()],
-                        description: Some("Rebase current branch on top of upstream".to_string()),
-                        args: None,
-                    },
-                ],
+                description: Some(
+                    "Fetch from and integrate with another repository or branch".to_string(),
+                ),
+                options: vec![FigOption {
+                    name: vec!["--rebase".to_string()],
+                    description: Some("Rebase current branch on top of upstream".to_string()),
+                    args: None,
+                }],
                 ..Default::default()
             },
             FigSubcommand {
@@ -154,13 +158,11 @@ pub fn default_git_spec() -> FigSpec {
             FigSubcommand {
                 name: "checkout".to_string(),
                 description: Some("Switch branches or restore working tree files".to_string()),
-                options: vec![
-                    FigOption {
-                        name: vec!["-b".to_string()],
-                        description: Some("Create and checkout a new branch".to_string()),
-                        args: None,
-                    },
-                ],
+                options: vec![FigOption {
+                    name: vec!["-b".to_string()],
+                    description: Some("Create and checkout a new branch".to_string()),
+                    args: None,
+                }],
                 ..Default::default()
             },
             FigSubcommand {
@@ -169,7 +171,9 @@ pub fn default_git_spec() -> FigSpec {
                 options: vec![
                     FigOption {
                         name: vec!["-a".to_string(), "--all".to_string()],
-                        description: Some("List both remote-tracking and local branches".to_string()),
+                        description: Some(
+                            "List both remote-tracking and local branches".to_string(),
+                        ),
                         args: None,
                     },
                     FigOption {
@@ -187,14 +191,14 @@ pub fn default_git_spec() -> FigSpec {
             },
             FigSubcommand {
                 name: "diff".to_string(),
-                description: Some("Show changes between commits, commit and working tree, etc".to_string()),
-                options: vec![
-                    FigOption {
-                        name: vec!["--staged".to_string(), "--cached".to_string()],
-                        description: Some("View changes staged in the index".to_string()),
-                        args: None,
-                    },
-                ],
+                description: Some(
+                    "Show changes between commits, commit and working tree, etc".to_string(),
+                ),
+                options: vec![FigOption {
+                    name: vec!["--staged".to_string(), "--cached".to_string()],
+                    description: Some("View changes staged in the index".to_string()),
+                    args: None,
+                }],
                 ..Default::default()
             },
             FigSubcommand {
@@ -203,7 +207,9 @@ pub fn default_git_spec() -> FigSpec {
                 options: vec![
                     FigOption {
                         name: vec!["--oneline".to_string()],
-                        description: Some("Shorthand for --pretty=oneline --abbrev-commit".to_string()),
+                        description: Some(
+                            "Shorthand for --pretty=oneline --abbrev-commit".to_string(),
+                        ),
                         args: None,
                     },
                     FigOption {
@@ -225,7 +231,9 @@ pub fn default_git_spec() -> FigSpec {
                 options: vec![
                     FigOption {
                         name: vec!["--no-ff".to_string()],
-                        description: Some("Create a merge commit even if fast-forward is possible".to_string()),
+                        description: Some(
+                            "Create a merge commit even if fast-forward is possible".to_string(),
+                        ),
                         args: None,
                     },
                     FigOption {
@@ -303,7 +311,9 @@ pub fn default_docker_spec() -> FigSpec {
                 options: vec![
                     FigOption {
                         name: vec!["-d".to_string(), "--detach".to_string()],
-                        description: Some("Run container in background and print container ID".to_string()),
+                        description: Some(
+                            "Run container in background and print container ID".to_string(),
+                        ),
                         args: None,
                     },
                     FigOption {
@@ -328,7 +338,9 @@ pub fn default_docker_spec() -> FigSpec {
                     },
                     FigOption {
                         name: vec!["--rm".to_string()],
-                        description: Some("Automatically remove container when it exits".to_string()),
+                        description: Some(
+                            "Automatically remove container when it exits".to_string(),
+                        ),
                         args: None,
                     },
                 ],
@@ -340,7 +352,9 @@ pub fn default_docker_spec() -> FigSpec {
                 options: vec![
                     FigOption {
                         name: vec!["-a".to_string(), "--all".to_string()],
-                        description: Some("Show all containers (default shows just running)".to_string()),
+                        description: Some(
+                            "Show all containers (default shows just running)".to_string(),
+                        ),
                         args: None,
                     },
                     FigOption {
@@ -357,7 +371,9 @@ pub fn default_docker_spec() -> FigSpec {
                 options: vec![
                     FigOption {
                         name: vec!["-t".to_string(), "--tag".to_string()],
-                        description: Some("Name and optionally tag in 'name:tag' format".to_string()),
+                        description: Some(
+                            "Name and optionally tag in 'name:tag' format".to_string(),
+                        ),
                         args: None,
                     },
                     FigOption {
@@ -371,13 +387,11 @@ pub fn default_docker_spec() -> FigSpec {
             FigSubcommand {
                 name: "images".to_string(),
                 description: Some("List images".to_string()),
-                options: vec![
-                    FigOption {
-                        name: vec!["-a".to_string(), "--all".to_string()],
-                        description: Some("Show all images".to_string()),
-                        args: None,
-                    },
-                ],
+                options: vec![FigOption {
+                    name: vec!["-a".to_string(), "--all".to_string()],
+                    description: Some("Show all images".to_string()),
+                    args: None,
+                }],
                 ..Default::default()
             },
             FigSubcommand {
@@ -408,49 +422,41 @@ pub fn default_docker_spec() -> FigSpec {
             FigSubcommand {
                 name: "rm".to_string(),
                 description: Some("Remove one or more containers".to_string()),
-                options: vec![
-                    FigOption {
-                        name: vec!["-f".to_string(), "--force".to_string()],
-                        description: Some("Force the removal of a running container".to_string()),
-                        args: None,
-                    },
-                ],
+                options: vec![FigOption {
+                    name: vec!["-f".to_string(), "--force".to_string()],
+                    description: Some("Force the removal of a running container".to_string()),
+                    args: None,
+                }],
                 ..Default::default()
             },
             FigSubcommand {
                 name: "rmi".to_string(),
                 description: Some("Remove one or more images".to_string()),
-                options: vec![
-                    FigOption {
-                        name: vec!["-f".to_string(), "--force".to_string()],
-                        description: Some("Force removal of the image".to_string()),
-                        args: None,
-                    },
-                ],
+                options: vec![FigOption {
+                    name: vec!["-f".to_string(), "--force".to_string()],
+                    description: Some("Force removal of the image".to_string()),
+                    args: None,
+                }],
                 ..Default::default()
             },
             FigSubcommand {
                 name: "logs".to_string(),
                 description: Some("Fetch the logs of a container".to_string()),
-                options: vec![
-                    FigOption {
-                        name: vec!["-f".to_string(), "--follow".to_string()],
-                        description: Some("Follow log output".to_string()),
-                        args: None,
-                    },
-                ],
+                options: vec![FigOption {
+                    name: vec!["-f".to_string(), "--follow".to_string()],
+                    description: Some("Follow log output".to_string()),
+                    args: None,
+                }],
                 ..Default::default()
             },
             FigSubcommand {
                 name: "exec".to_string(),
                 description: Some("Run a command in a running container".to_string()),
-                options: vec![
-                    FigOption {
-                        name: vec!["-it".to_string()],
-                        description: Some("Allocate a pseudo-TTY and keep stdin open".to_string()),
-                        args: None,
-                    },
-                ],
+                options: vec![FigOption {
+                    name: vec!["-it".to_string()],
+                    description: Some("Allocate a pseudo-TTY and keep stdin open".to_string()),
+                    args: None,
+                }],
                 ..Default::default()
             },
             FigSubcommand {
