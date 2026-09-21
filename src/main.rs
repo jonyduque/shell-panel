@@ -46,6 +46,7 @@ async fn main() -> anyhow::Result<()> {
     let config = core::config::Config::load_or_default(cli.config.as_deref());
     let shell = cli.shell.or_else(|| config.shell.clone());
     let mut app = core::app::App::new(config, shell);
+    app.no_profile = cli.no_profile;
     let exit_code = app.run().await?;
 
     if exit_code != 0 {

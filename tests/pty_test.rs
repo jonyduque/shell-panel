@@ -3,7 +3,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use shell_panel::core::app::get_shell_integration_path;
-use shell_panel::pty::conpty::{watch_exit, ConPtySession};
+use shell_panel::pty::conpty::{watch_exit, ConPtySession, SpawnOptions};
 use shell_panel::pty::shell::{detect_shell, ShellType};
 
 #[test]
@@ -37,8 +37,14 @@ fn test_detect_shell_auto() {
 fn test_conpty_session_spawn_and_resize() {
     let script_path = Path::new("assets/shellIntegration.ps1");
     let shell = detect_shell(None);
-    let mut session =
-        ConPtySession::spawn(shell, 80, 24, script_path).expect("Falha ao criar sessão ConPTY");
+    let mut session = ConPtySession::spawn(
+        shell,
+        80,
+        24,
+        script_path,
+        SpawnOptions { no_profile: true },
+    )
+    .expect("Falha ao criar sessão ConPTY");
     assert!(session.resize(120, 40).is_ok());
     let _ = session.kill();
 }
@@ -46,8 +52,14 @@ fn test_conpty_session_spawn_and_resize() {
 #[tokio::test]
 async fn test_watch_exit_reports_code_although_pty_output_stays_open() {
     let script = get_shell_integration_path().unwrap();
-    let ConPtySession { pair, child } =
-        ConPtySession::spawn(detect_shell(None), 80, 24, &script).unwrap();
+    let ConPtySession { pair, child } = ConPtySession::spawn(
+        detect_shell(None),
+        80,
+        24,
+        &script,
+        SpawnOptions { no_profile: true },
+    )
+    .unwrap();
     let mut writer = pair.master.take_writer().unwrap();
     let exit_rx = watch_exit(child);
 

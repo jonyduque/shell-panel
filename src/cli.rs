@@ -25,4 +25,8 @@ pub struct Cli {
     /// Print default sample configuration in TOML format
     #[arg(long)]
     pub print_default_config: bool,
+
+    /// Start PowerShell without loading profiles
+    #[arg(long)]
+    pub no_profile: bool,
 }

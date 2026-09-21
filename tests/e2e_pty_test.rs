@@ -6,7 +6,7 @@ use shell_panel::core::app::{
 };
 use shell_panel::core::config::Config;
 use shell_panel::engine::provider::CompletionProvider;
-use shell_panel::pty::conpty::ConPtySession;
+use shell_panel::pty::conpty::{ConPtySession, SpawnOptions};
 use shell_panel::pty::shell::detect_shell;
 
 #[test]
@@ -63,8 +63,14 @@ fn test_e2e_pty_powershell_session() {
     assert!(script_path.is_file());
 
     let shell = detect_shell(None);
-    let mut session =
-        ConPtySession::spawn(shell, 120, 30, &script_path).expect("Failed to spawn ConPty session");
+    let mut session = ConPtySession::spawn(
+        shell,
+        120,
+        30,
+        &script_path,
+        SpawnOptions { no_profile: true },
+    )
+    .expect("Failed to spawn ConPty session");
 
     let mut reader = session
         .pair

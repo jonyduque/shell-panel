@@ -8,9 +8,22 @@ pub struct ConPtySession {
     pub child: Box<dyn portable_pty::Child + Send + Sync>,
 }
 
+/// Options for [`ConPtySession::spawn`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SpawnOptions {
+    /// Start PowerShell with `-NoProfile`.
+    pub no_profile: bool,
+}
+
 impl ConPtySession {
     /// Spawns a ConPTY session running the specified shell with the initialization script.
-    pub fn spawn(shell_type: ShellType, cols: u16, rows: u16, script_path: &Path) -> Result<Self> {
+    pub fn spawn(
+        shell_type: ShellType,
+        cols: u16,
+        rows: u16,
+        script_path: &Path,
+        options: SpawnOptions,
+    ) -> Result<Self> {
         let pty_system = native_pty_system();
         let pair = pty_system.openpty(PtySize {
             rows,
@@ -20,9 +33,14 @@ impl ConPtySession {
         })?;
 
         let mut cmd = CommandBuilder::new(shell_type.executable_name());
+        // portable-pty starts the child in the home directory unless a cwd is given.
+        cmd.cwd(std::env::current_dir()?);
         cmd.env("ISTERM", "1");
         cmd.env("TERM", "xterm-256color");
         cmd.arg("-NoLogo");
+        if options.no_profile {
+            cmd.arg("-NoProfile");
+        }
         cmd.arg("-ExecutionPolicy");
         cmd.arg("Bypass");
         cmd.arg("-NoExit");

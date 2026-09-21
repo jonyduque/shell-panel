@@ -19,7 +19,7 @@ use crate::engine::replacement::calculate_replacement;
 use crate::io::filter::sanitize_output_stream;
 use crate::io::key_event::{classify_key, encode_key_event, ActionKey};
 use crate::io::raw_mode::RawModeGuard;
-use crate::pty::conpty::{watch_exit, ConPtySession};
+use crate::pty::conpty::{watch_exit, ConPtySession, SpawnOptions};
 use crate::pty::shell::detect_shell;
 use crate::shell::command_state::CommandState;
 use crate::shell::osc::parse_osc_sequence;
@@ -621,6 +621,7 @@ pub struct App {
     pub config: Config,
     pub theme: crate::ui::theme::Theme,
     pub override_shell: Option<String>,
+    pub no_profile: bool,
 }
 
 impl App {
@@ -630,6 +631,7 @@ impl App {
             config,
             theme,
             override_shell,
+            no_profile: false,
         }
     }
 
@@ -638,8 +640,15 @@ impl App {
         let shell_type = detect_shell(self.override_shell.as_deref());
         let script_path = get_shell_integration_path()?;
 
-        let ConPtySession { pair, child } =
-            ConPtySession::spawn(shell_type, cols, rows, &script_path)?;
+        let ConPtySession { pair, child } = ConPtySession::spawn(
+            shell_type,
+            cols,
+            rows,
+            &script_path,
+            SpawnOptions {
+                no_profile: self.no_profile,
+            },
+        )?;
         let mut exit_rx = watch_exit(child);
         let _raw_guard = RawModeGuard::enter()?;
 
