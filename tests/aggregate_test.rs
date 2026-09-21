@@ -145,6 +145,94 @@ fn test_plan_replacement_uses_shell_range_or_raw_token() {
     );
 }
 
+#[test]
+fn test_plan_replacement_survives_hostile_reports() {
+    let sug = Suggestion::new("status", "status", None, 80).with_shell_range();
+
+    // A negative replacement index is no range at all: fall back to the token before the cursor.
+    assert_eq!(
+        plan_replacement(&report("git sta", 7, -1, 3, vec![]), &sug),
+        ReplacementAction {
+            backspace_count: 0,
+            delete_count: 0,
+            insert_text: "tus ".into()
+        }
+    );
+
+    // A cursor past the end of the line: the whole line counts as the text before it.
+    assert_eq!(
+        plan_replacement(&report("git sta", 99, 4, 3, vec![]), &sug),
+        ReplacementAction {
+            backspace_count: 0,
+            delete_count: 0,
+            insert_text: "tus ".into()
+        }
+    );
+
+    // A cursor inside a surrogate pair ("😀" is two UTF-16 units): no byte index, so no range.
+    assert_eq!(
+        plan_replacement(&report("a😀", 2, 0, 3, vec![]), &sug),
+        ReplacementAction {
+            backspace_count: 3, // "a" plus the two units of the emoji
+            delete_count: 0,
+            insert_text: "status ".into()
+        }
+    );
+
+    // A range that ends before the cursor cannot be applied with Backspace and Delete:
+    // the token before the cursor already is the suggestion, so only the space is typed.
+    assert_eq!(
+        plan_replacement(&report("git status", 10, 0, 3, vec![]), &sug),
+        ReplacementAction {
+            backspace_count: 0,
+            delete_count: 0,
+            insert_text: " ".into()
+        }
+    );
+
+    // Absurd indices must not overflow or panic either.
+    let r = report("git", 3, i64::MAX, i64::MAX, vec![]);
+    assert_eq!(plan_replacement(&r, &sug).insert_text, "status ");
+}
+
+#[test]
+fn test_shell_suggestions_drop_control_characters() {
+    // A multi-line history entry (`#text<Tab>`) would type an Enter and run a half-inserted line.
+    let sugs = shell_suggestions(&report(
+        "#foo",
+        4,
+        0,
+        4,
+        vec![
+            m("git status\r\nrm -rf /", "git status…", "Other", ""),
+            m("git\tstatus", "git status", "Other", ""),
+            m("esc\x1b[1m", "esc", "Other", ""),
+            m("del\x7f", "del", "Other", ""),
+            m("git status", "git status", "Other", ""),
+        ],
+    ));
+    let names: Vec<&str> = sugs.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, vec!["git status"]);
+}
+
+#[test]
+fn test_merge_suggestions_drop_control_characters() {
+    // No source may bypass the filter, not even an external provider.
+    let external = vec![
+        Suggestion::new("safe", "safe", None, 80).with_kind(SuggestionKind::Subcommand),
+        Suggestion::new("bad\r\n", "bad", None, 90).with_kind(SuggestionKind::Subcommand),
+    ];
+    let shell = vec![
+        Suggestion::new("also\nbad", "also bad", None, 85).with_shell_range(),
+        Suggestion::new("fine", "fine", None, 70).with_shell_range(),
+    ];
+    let names: Vec<String> = merge_suggestions("sa", external, shell)
+        .into_iter()
+        .map(|s| s.name)
+        .collect();
+    assert_eq!(names, vec!["safe".to_string(), "fine".to_string()]);
+}
+
 #[tokio::test]
 async fn test_engine_merges_spec_with_shell_matches_off_thread() {
     let mut specs = JsonSpecProvider::new();

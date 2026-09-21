@@ -48,11 +48,21 @@ const BUILTIN_ALIASES: &[&str] = &[
     "start", "stz", "sv", "tee", "type", "where", "wjb", "write",
 ];
 
+/// Whether `name` is safe to type into the shell.
+///
+/// The text is written to the PTY as-is, so a control character would be interpreted as a key:
+/// a CR or LF in a match (a multi-line history entry, or a spoofed report) submits the
+/// half-inserted line, and an ESC starts an escape sequence.
+fn is_insertable(name: &str) -> bool {
+    !name.chars().any(|c| c < ' ' || c == '\x7f')
+}
+
 /// Turns PowerShell's completion matches into suggestions.
 pub fn shell_suggestions(report: &ShellReport) -> Vec<Suggestion> {
     report
         .matches
         .iter()
+        .filter(|m| is_insertable(&m.0))
         .map(|m| {
             let (text, list_item, result_type, tooltip) = (&m.0, &m.1, &m.2, &m.3);
             let (kind, priority) = match result_type.as_str() {
@@ -106,6 +116,8 @@ pub fn merge_suggestions(
     results.extend(shell.into_iter().filter(|s| {
         include_files || !matches!(s.kind, SuggestionKind::File | SuggestionKind::Directory)
     }));
+    // No source may hand the PTY a control character, not even an external provider.
+    results.retain(|s| is_insertable(&s.name));
 
     // Stable sort: on equal priority and name the external source (added first) wins.
     results.sort_by(|a, b| {
