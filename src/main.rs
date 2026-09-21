@@ -1,33 +1,7 @@
 use clap::Parser;
+use shell_panel::cli::Cli;
 use shell_panel::core;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-
-#[derive(Parser, Debug)]
-#[command(name = "shell-panel")]
-#[command(author = "jonyd")]
-#[command(version = "0.1.0")]
-#[command(about = "IDE-style command line auto-complete panel for Windows PowerShell", long_about = None)]
-pub struct Cli {
-    /// Shell to run (pwsh, powershell). Defaults to auto-detect.
-    #[arg(short, long)]
-    pub shell: Option<String>,
-
-    /// Enable verbose debug logging
-    #[arg(short, long)]
-    pub verbose: bool,
-
-    /// Check if currently running inside a shell-panel session
-    #[arg(short, long)]
-    pub check: bool,
-
-    /// Path to TOML configuration file (defaults to ~/.config/shell-panel.toml)
-    #[arg(short, long)]
-    pub config: Option<std::path::PathBuf>,
-
-    /// Print default sample configuration in TOML format
-    #[arg(long)]
-    pub print_default_config: bool,
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
