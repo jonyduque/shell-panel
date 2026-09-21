@@ -31,25 +31,29 @@ impl Renderer {
             return Ok(None);
         }
 
-        let page = state.visible_page();
-        if page.is_empty() {
+        // Rows free below and above the cursor row; the cursor row itself is never covered.
+        let below = term.rows.saturating_sub(cursor_y.saturating_add(1)) as usize;
+        let above = cursor_y as usize;
+        let wanted = state.max_rows.min(state.total_items());
+        let (place_below, page_rows) = if wanted <= below {
+            (true, wanted)
+        } else if wanted <= above {
+            (false, wanted)
+        } else if below >= above {
+            (true, below)
+        } else {
+            (false, above)
+        };
+        if page_rows == 0 {
             return Ok(None);
         }
 
+        let page = state.visible_page_with(page_rows);
         let page_len = page.len() as u16;
-
-        // Determine dropdown vertical placement
-        let start_row = if cursor_y.saturating_add(1).saturating_add(page_len) <= term.rows {
-            // Render below cursor
-            cursor_y.saturating_add(1)
-        } else if cursor_y >= page_len {
-            // Render above cursor
-            cursor_y.saturating_sub(page_len)
+        let start_row = if place_below {
+            cursor_y + 1
         } else {
-            // Render below clamped to terminal boundary
-            cursor_y
-                .saturating_add(1)
-                .min(term.rows.saturating_sub(page_len))
+            cursor_y - page_len
         };
 
         let col = (cursor_x + 1).min(term.cols);
@@ -72,7 +76,7 @@ impl Renderer {
                 theme,
                 *selected,
                 min_width,
-                term.cols as usize,
+                available_cols,
             );
 
             // Move cursor to (target_row + 1, col) and write line

@@ -77,17 +77,21 @@ impl SuggestionState {
         self.visible = false;
     }
 
-    /// Returns the slice of suggestions on the current visible page,
-    /// each paired with a boolean indicating whether it is the active item.
+    /// Returns the suggestions on the current page, each paired with whether it is the active item.
     pub fn visible_page(&self) -> Vec<(&Suggestion, bool)> {
+        self.visible_page_with(self.max_rows)
+    }
+
+    /// Like [`visible_page`](Self::visible_page) with an explicit page size, for when the
+    /// terminal has room for fewer rows than `max_rows`.
+    pub fn visible_page_with(&self, page_rows: usize) -> Vec<(&Suggestion, bool)> {
         if self.suggestions.is_empty() {
             return Vec::new();
         }
 
-        let max_rows = self.max_rows.max(1);
-        let page = self.active_idx / max_rows;
-        let start = page * max_rows;
-        let end = (start + max_rows).min(self.suggestions.len());
+        let page_rows = page_rows.max(1);
+        let start = (self.active_idx / page_rows) * page_rows;
+        let end = (start + page_rows).min(self.suggestions.len());
 
         self.suggestions[start..end]
             .iter()

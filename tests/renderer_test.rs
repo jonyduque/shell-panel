@@ -291,6 +291,92 @@ fn test_line_patch_struct() {
     assert_eq!(patch, cloned);
 }
 
+fn many(n: usize) -> Vec<Suggestion> {
+    (0..n)
+        .map(|i| Suggestion::new(format!("item{i}"), format!("item{i}"), None, 50))
+        .collect()
+}
+
+#[test]
+fn test_render_dropdown_never_writes_past_right_edge() {
+    let term = HeadlessTerminal::new(80, 24);
+    let mut state = SuggestionState::new(5);
+    state.set_suggestions(vec![
+        Suggestion::new(
+            "a-very-long-suggestion-name",
+            "a-very-long-suggestion-name",
+            Some("with a long description".into()),
+            80,
+        ),
+        Suggestion::new("second", "second", None, 70),
+    ]);
+
+    let mut out = Vec::new();
+    Renderer::render_dropdown(&state, &term, &Theme::default(), 70, 5, &mut out).unwrap();
+
+    // Replay on a blank screen: the panel starts at column 70, anything left of it wrapped.
+    let mut screen = HeadlessTerminal::new(80, 24);
+    screen.process(&out);
+    for row in 0..24 {
+        for col in 0..70 {
+            let cell = screen.screen().cell(row, col).unwrap();
+            assert!(
+                cell.contents().is_empty(),
+                "overflow wrote {:?} at row {} col {}",
+                cell.contents(),
+                row,
+                col
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dropdown_never_covers_the_cursor_row() {
+    // 8 rows, cursor on row 4, 5 suggestions wanted: 3 rows below, 4 above -> 4 rows above.
+    let term = HeadlessTerminal::new(80, 8);
+    let mut state = SuggestionState::new(5);
+    state.set_suggestions(many(12));
+
+    let mut out = Vec::new();
+    let layout = Renderer::render_dropdown(&state, &term, &Theme::default(), 0, 4, &mut out)
+        .unwrap()
+        .expect("rendered");
+
+    assert_eq!(
+        layout,
+        DropdownLayout {
+            start_row: 0,
+            row_count: 4
+        }
+    );
+}
+
+#[test]
+fn test_dropdown_in_one_row_terminal_is_not_rendered() {
+    let term = HeadlessTerminal::new(80, 1);
+    let mut state = SuggestionState::new(5);
+    state.set_suggestions(many(3));
+    let mut out = Vec::new();
+    assert_eq!(
+        Renderer::render_dropdown(&state, &term, &Theme::default(), 0, 0, &mut out).unwrap(),
+        None
+    );
+}
+
+#[test]
+fn test_visible_page_with_smaller_page() {
+    let mut state = SuggestionState::new(5);
+    state.set_suggestions(many(7));
+    for _ in 0..4 {
+        state.move_down(); // active index 4 -> second page of size 4
+    }
+    let page = state.visible_page_with(4);
+    assert_eq!(page.len(), 3);
+    assert!(page[0].1);
+    assert_eq!(page[0].0.name, "item4");
+}
+
 #[test]
 fn test_render_dropdown_with_custom_theme() {
     use shell_panel::core::config::{ColorConfig, Config, IconConfig};

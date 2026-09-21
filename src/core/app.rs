@@ -719,25 +719,25 @@ impl App {
                     let mut data_to_process = std::mem::take(&mut osc_residual);
                     data_to_process.extend_from_slice(&chunk);
 
+                    // Restore the covered rows from the mirror as it was when they were covered; output that scrolls would otherwise be applied twice.
+                    if let Some(layout) = dropdown_layout.take() {
+                        let _ = Renderer::clear_dropdown(&layout, &term, &mut stdout);
+                        suggestion_state.dismiss();
+                    }
+
                     // 1. Strip Win32 / Kitty sequences
                     let sanitized = sanitize_output_stream(&data_to_process);
 
                     // 2. Scan OSC sequences, update terminal and command state, and get clean terminal bytes (OSC 6973 stripped)
                     let clean = scan_and_handle_osc(&sanitized, &mut term, &mut command_state, &mut osc_residual);
 
-                    // 3. If dropdown was visible and terminal output arrived, clear dropdown to avoid visual tearing
-                    if let Some(layout) = dropdown_layout.take() {
-                        let _ = Renderer::clear_dropdown(&layout, &term, &mut stdout);
-                        suggestion_state.dismiss();
-                    }
-
-                    // 4. Print clean bytes to stdout (no internal OSC sequences leak to host) and flush
+                    // 3. Print clean bytes to stdout (no internal OSC sequences leak to host) and flush
                     if !clean.is_empty() {
                         let _ = stdout.write_all(&clean);
                         let _ = stdout.flush();
                     }
 
-                    // 5. If NOT in alternate buffer and prompt ended (!command_state.in_prompt):
+                    // 4. If NOT in alternate buffer and prompt ended (!command_state.in_prompt):
                     if !term.is_alternate_buffer() && !command_state.in_prompt {
                         if let (Some(p_row), Some(p_col)) = (command_state.prompt_line, command_state.prompt_end_x) {
                             command_state.command_text = term.extract_command_text(p_row, p_col);
