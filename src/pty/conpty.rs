@@ -65,3 +65,18 @@ impl ConPtySession {
         Ok(status)
     }
 }
+
+/// Waits for the shell on a dedicated thread and reports its exit code.
+///
+/// ConPTY keeps its output pipe open after the child exits, so end-of-file on the
+/// PTY reader cannot be used to detect that the shell is gone.
+pub fn watch_exit(
+    mut child: Box<dyn portable_pty::Child + Send + Sync>,
+) -> tokio::sync::oneshot::Receiver<u32> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        let code = child.wait().map(|status| status.exit_code()).unwrap_or(1);
+        let _ = tx.send(code);
+    });
+    rx
+}

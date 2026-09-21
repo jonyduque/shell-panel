@@ -1,6 +1,10 @@
-use shell_panel::pty::conpty::ConPtySession;
-use shell_panel::pty::shell::{detect_shell, ShellType};
+use std::io::Write;
 use std::path::Path;
+use std::time::Duration;
+
+use shell_panel::core::app::get_shell_integration_path;
+use shell_panel::pty::conpty::{watch_exit, ConPtySession};
+use shell_panel::pty::shell::{detect_shell, ShellType};
 
 #[test]
 fn test_shell_type_executable_name() {
@@ -37,4 +41,25 @@ fn test_conpty_session_spawn_and_resize() {
         ConPtySession::spawn(shell, 80, 24, script_path).expect("Falha ao criar sessão ConPTY");
     assert!(session.resize(120, 40).is_ok());
     let _ = session.kill();
+}
+
+#[tokio::test]
+async fn test_watch_exit_reports_code_although_pty_output_stays_open() {
+    let script = get_shell_integration_path().unwrap();
+    let ConPtySession { pair, child } =
+        ConPtySession::spawn(detect_shell(None), 80, 24, &script).unwrap();
+    let mut writer = pair.master.take_writer().unwrap();
+    let exit_rx = watch_exit(child);
+
+    // Input typed before PSReadLine is up stays in the console input buffer.
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    writer.write_all(b"exit 3\r").unwrap();
+    writer.flush().unwrap();
+
+    let code = tokio::time::timeout(Duration::from_secs(30), exit_rx)
+        .await
+        .expect("shell did not report exit")
+        .expect("watcher thread dropped the sender");
+    assert_eq!(code, 3);
+    drop(pair);
 }

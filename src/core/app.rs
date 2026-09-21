@@ -1,9 +1,11 @@
 use std::collections::HashSet;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::Result;
 use futures_util::StreamExt;
+use portable_pty::PtySize;
 
 use crate::core::config::Config;
 use crate::engine::lexer::lex_command_line;
@@ -17,7 +19,7 @@ use crate::engine::replacement::calculate_replacement;
 use crate::io::filter::sanitize_output_stream;
 use crate::io::key_event::{classify_key, encode_key_event, ActionKey};
 use crate::io::raw_mode::RawModeGuard;
-use crate::pty::conpty::ConPtySession;
+use crate::pty::conpty::{watch_exit, ConPtySession};
 use crate::pty::shell::detect_shell;
 use crate::shell::command_state::CommandState;
 use crate::shell::osc::parse_osc_sequence;
@@ -636,11 +638,13 @@ impl App {
         let shell_type = detect_shell(self.override_shell.as_deref());
         let script_path = get_shell_integration_path()?;
 
-        let mut pty_session = ConPtySession::spawn(shell_type, cols, rows, &script_path)?;
+        let ConPtySession { pair, child } =
+            ConPtySession::spawn(shell_type, cols, rows, &script_path)?;
+        let mut exit_rx = watch_exit(child);
         let _raw_guard = RawModeGuard::enter()?;
 
-        let mut pty_reader = pty_session.pair.master.try_clone_reader()?;
-        let mut pty_writer = pty_session.pair.master.take_writer()?;
+        let mut pty_reader = pair.master.try_clone_reader()?;
+        let mut pty_writer = pair.master.take_writer()?;
 
         let (pty_tx, mut pty_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(1024);
         std::thread::spawn(move || {
@@ -672,9 +676,29 @@ impl App {
         let mut event_stream = crossterm::event::EventStream::new();
         let mut stdout = std::io::stdout();
         let mut osc_residual: Vec<u8> = Vec::new();
+        let mut exit_code: Option<u32> = None;
 
         loop {
             tokio::select! {
+                // Shell process exit
+                code = &mut exit_rx => {
+                    // The shell's last output may still be in flight: drain until the PTY is quiet.
+                    let drain_until = tokio::time::Instant::now() + Duration::from_secs(1);
+                    while let Ok(Some(chunk)) = tokio::time::timeout_at(
+                        drain_until.min(tokio::time::Instant::now() + Duration::from_millis(100)),
+                        pty_rx.recv(),
+                    ).await {
+                        let mut data = std::mem::take(&mut osc_residual);
+                        data.extend_from_slice(&chunk);
+                        let sanitized = sanitize_output_stream(&data);
+                        let clean = scan_and_handle_osc(&sanitized, &mut term, &mut command_state, &mut osc_residual);
+                        let _ = stdout.write_all(&clean);
+                    }
+                    let _ = stdout.flush();
+                    exit_code = Some(code.unwrap_or(1));
+                    break;
+                }
+
                 // PTY Output chunk
                 chunk = pty_rx.recv() => {
                     let chunk = match chunk {
@@ -721,7 +745,7 @@ impl App {
 
                     match event {
                         crossterm::event::Event::Resize(new_cols, new_rows) => {
-                            let _ = pty_session.resize(new_cols, new_rows);
+                            let _ = pair.master.resize(PtySize { rows: new_rows, cols: new_cols, pixel_width: 0, pixel_height: 0 });
                             term.resize(new_cols, new_rows);
                             if let Some(layout) = dropdown_layout.take() {
                                 let _ = Renderer::clear_dropdown(&layout, &term, &mut stdout);
@@ -908,9 +932,16 @@ impl App {
             let _ = Renderer::clear_dropdown(&layout, &term, &mut stdout);
         }
 
-        let exit_status = pty_session.child.wait()?;
         drop(_raw_guard);
-
-        Ok(exit_status.exit_code())
+        let exit_code = match exit_code {
+            Some(code) => code,
+            // The reader thread ended first; give the exit watcher a moment before giving up.
+            None => tokio::time::timeout(Duration::from_secs(2), exit_rx)
+                .await
+                .ok()
+                .and_then(|result| result.ok())
+                .unwrap_or(1),
+        };
+        Ok(exit_code)
     }
 }
