@@ -23,3 +23,31 @@ fn test_version_comes_from_cargo_manifest() {
         Some(env!("CARGO_PKG_VERSION"))
     );
 }
+
+fn run_with_session_env(args: &[&str], in_session: bool) -> std::process::Output {
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_shell-panel"));
+    cmd.args(args).env_remove("SHELL_PANEL_SESSION");
+    if in_session {
+        cmd.env("SHELL_PANEL_SESSION", "1");
+    }
+    cmd.output().unwrap()
+}
+
+#[test]
+fn test_refuses_to_start_inside_existing_session() {
+    let out = run_with_session_env(&[], true);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("already running"));
+}
+
+#[test]
+fn test_check_reports_session_state() {
+    assert_eq!(
+        run_with_session_env(&["--check"], true).status.code(),
+        Some(0)
+    );
+    assert_eq!(
+        run_with_session_env(&["--check"], false).status.code(),
+        Some(1)
+    );
+}

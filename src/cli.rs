@@ -10,7 +10,7 @@ pub struct Cli {
     #[arg(short, long)]
     pub shell: Option<String>,
 
-    /// Enable verbose debug logging
+    /// Write a debug log to %TEMP%\shell-panel\shell-panel.log
     #[arg(short, long)]
     pub verbose: bool,
 

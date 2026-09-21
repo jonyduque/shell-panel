@@ -23,6 +23,7 @@ use crate::ui::renderer::{DropdownLayout, Renderer};
 use crate::ui::suggestion_state::SuggestionState;
 use crate::ui::theme::Theme;
 use crate::vt::emulator::HeadlessTerminal;
+use tracing::debug;
 
 /// How long Tab waits for the shell's report before it is handed to PowerShell unchanged.
 /// PowerShell's own completion can take seconds when it has to load a module.
@@ -646,6 +647,7 @@ impl App {
                     if let Some(report) = command_state.report.take() {
                         // Only the answer to the latest Tab is wanted.
                         if report_deadline.take().is_some() {
+                            debug!(matches = report.matches.len(), "shell report arrived");
                             let engine = engine.clone();
                             let cwd = command_state.cwd.clone();
                             let tx = completion_tx.clone();
@@ -661,6 +663,7 @@ impl App {
                     if outcome.generation != generation {
                         continue;
                     }
+                    debug!(merged = outcome.results.len(), "completion results merged");
                     match outcome.results.as_slice() {
                         [] => write_to_pty(&mut pty_writer, b"\t"),
                         [only] => write_to_pty(&mut pty_writer, &plan_replacement(&outcome.report, only).to_bytes()),
@@ -670,6 +673,7 @@ impl App {
 
                 _ = tokio::time::sleep_until(deadline), if report_deadline.is_some() => {
                     // No report: the chord was not bound or PowerShell is busy. Plain Tab.
+                    debug!("shell report timed out");
                     report_deadline = None;
                     write_to_pty(&mut pty_writer, b"\t");
                 }
@@ -769,6 +773,7 @@ impl App {
             && !term.is_alternate_buffer();
         if completes {
             // Only PSReadLine answers the request, and it is reading right now.
+            debug!("requesting shell report");
             write_to_pty(pty_writer, REPORT_REQUEST_KEY);
             *report_deadline = Some(Instant::now() + REPORT_TIMEOUT);
         } else {

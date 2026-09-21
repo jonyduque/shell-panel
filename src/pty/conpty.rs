@@ -2,6 +2,9 @@ use crate::pty::shell::ShellType;
 use anyhow::{Context, Result};
 use portable_pty::{native_pty_system, CommandBuilder, ExitStatus, PtyPair, PtySize};
 
+/// Environment variable set to `1` inside a shell-panel session.
+pub const SESSION_ENV: &str = "SHELL_PANEL_SESSION";
+
 pub struct ConPtySession {
     pub pair: PtyPair,
     pub child: Box<dyn portable_pty::Child + Send + Sync>,
@@ -33,7 +36,7 @@ impl ConPtySession {
         let mut cmd = CommandBuilder::new(shell_type.executable_name());
         // portable-pty starts the child in the home directory unless a cwd is given.
         cmd.cwd(std::env::current_dir()?);
-        cmd.env("ISTERM", "1");
+        cmd.env(SESSION_ENV, "1");
         cmd.env("TERM", "xterm-256color");
         cmd.arg("-NoLogo");
         if options.no_profile {

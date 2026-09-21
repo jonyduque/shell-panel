@@ -1,7 +1,30 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 use shell_panel::cli::Cli;
 use shell_panel::core;
+use shell_panel::pty::conpty::SESSION_ENV;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+/// Sends `tracing` output to a log file: the terminal is in raw mode and owned by the shell.
+fn init_file_logging() -> anyhow::Result<PathBuf> {
+    let dir = std::env::temp_dir().join("shell-panel");
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join("shell-panel.log");
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)?;
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::new("shell_panel=debug"))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .with_writer(std::sync::Mutex::new(file)),
+        )
+        .init();
+    Ok(path)
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -9,33 +32,35 @@ async fn main() -> anyhow::Result<()> {
 
     if cli.print_default_config {
         println!("{}", core::config::default_sample_toml());
-        std::process::exit(0);
+        return Ok(());
     }
 
-    let in_session = std::env::var("ISTERM").unwrap_or_default() == "1";
+    let in_session = std::env::var(SESSION_ENV).as_deref() == Ok("1");
     if cli.check {
         if in_session {
             println!("shell-panel session active.");
             std::process::exit(0);
-        } else {
-            println!("Not in a shell-panel session.");
-            std::process::exit(1);
         }
+        println!("Not in a shell-panel session.");
+        std::process::exit(1);
     }
 
-    // Configure logging
-    let filter = if cli.verbose {
-        tracing_subscriber::EnvFilter::new("shell_panel=debug")
-    } else {
-        tracing_subscriber::EnvFilter::new("shell_panel=info")
-    };
+    if in_session {
+        eprintln!("shell-panel: already running in this terminal ({SESSION_ENV}=1); refusing to start a nested session.");
+        std::process::exit(1);
+    }
 
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
-        .init();
+    if cli.verbose {
+        let path = init_file_logging()?;
+        eprintln!("shell-panel: writing debug log to {}", path.display());
+    }
 
-    // Register panic hook to restore normal terminal mode and show cursor
+    // The shell's output is raw VT. Windows Terminal always interprets it; a legacy console
+    // window only does after this call (it enables ENABLE_VIRTUAL_TERMINAL_PROCESSING).
+    #[cfg(windows)]
+    let _ = crossterm::ansi_support::supports_ansi();
+
+    // Restore the console if we panic while it is in raw mode.
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let _ = crossterm::terminal::disable_raw_mode();
