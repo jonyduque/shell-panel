@@ -1,1 +1,4 @@
 /target
+
+# Personal Claude Code settings for this checkout
+/.claude/settings.local.json
