@@ -116,6 +116,15 @@ impl Terminal {
         }
         None
     }
+    /// Keeps pumping until no chunk has arrived for `quiet`. `wait_exit` returns as soon as the
+    /// child is gone, but bytes written right before exit may still be in the channel.
+    pub fn drain(&mut self, quiet: Duration) {
+        while let Ok(bytes) = self.rx.recv_timeout(quiet) {
+            self.parser.process(&bytes);
+            self.raw.extend_from_slice(&bytes);
+        }
+    }
+
     /// Keeps this test session out of the user's real PSReadLine history: nothing typed here is
     /// saved, and no inline prediction from the real history is drawn on the line under test.
     /// Call it once the first prompt is on screen.

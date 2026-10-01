@@ -237,12 +237,13 @@ fn test_cursor_is_visible_after_exit() {
     term.quiet_session();
     term.send(b"exit\r");
     assert_eq!(term.wait_exit(STEP), Some(0));
+    term.drain(Duration::from_millis(500));
     let last_show_or_hide = term
         .raw
         .windows(6)
-        .rposition(|w| w == b"[?25h" || w == b"[?25l")
+        .rposition(|w| w == b"\x1b[?25h" || w == b"\x1b[?25l")
         .map(|i| &term.raw[i..i + 6]);
-    assert_eq!(last_show_or_hide, Some(&b"[?25h"[..]));
+    assert_eq!(last_show_or_hide, Some(&b"\x1b[?25h"[..]));
 }
 
 #[test]
@@ -265,13 +266,13 @@ fn test_tab_falls_back_to_powershell_when_no_report_arrives() {
     );
     term.send(b"echo zz_uni");
     assert!(term.wait_for_text("echo zz_uni", STEP));
-    term.send(b"	");
+    term.send(b"\t");
     assert!(
         term.wait_for_text("zz_unique_file.txt", Duration::from_secs(20)),
         "screen: {}",
         term.screen()
     );
-    term.send(b"");
+    term.send(b"\x1b");
     term.send(b"exit\r");
     assert_eq!(term.wait_exit(STEP), Some(0));
 }
@@ -290,13 +291,13 @@ fn test_key_typed_before_the_report_keeps_the_tab() {
     term.quiet_session();
     term.send(b"echo zz_uni");
     assert!(term.wait_for_text("echo zz_uni", STEP));
-    term.send(b"	Q");
+    term.send(b"\tQ");
     assert!(
         term.wait_for_text("zz_unique_file.txtQ", Duration::from_secs(20)),
         "screen: {}",
         term.screen()
     );
-    term.send(b"");
+    term.send(b"\x1b");
     term.send(b"exit\r");
     assert_eq!(term.wait_exit(STEP), Some(0));
 }
@@ -320,7 +321,7 @@ fn test_reserved_chord_never_reaches_a_running_program() {
         "screen: {}",
         term.screen()
     );
-    term.send(b"	");
+    term.send(b"\t");
     assert!(
         term.wait_until(STEP, |t| t.screen().contains("GOT-")
             && t.screen()
