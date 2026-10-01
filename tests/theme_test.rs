@@ -174,3 +174,22 @@ fn test_format_suggestion_line_with_custom_theme() {
     assert!(unselected_line.contains("\x1b[36m")); // unselected_fg cyan
     assert!(unselected_line.contains("\x1b[33m")); // description_fg yellow
 }
+
+#[test]
+fn test_control_characters_in_suggestion_text_are_drawn_inert() {
+    let theme = Theme::default();
+    let sug = Suggestion::new(
+        "a",
+        "a\u{1b}[1;1HPWNED",
+        Some("x\u{1b}]52;c;aWV4\u{7}y\u{9b}2Jz".to_string()),
+        50,
+    );
+    for selected in [false, true] {
+        let line = format_suggestion_line_with_theme(&sug, selected, 80, &theme);
+        assert!(!line.contains("\u{1b}[1;1H"), "{line:?}");
+        assert!(!line.contains("\u{1b}]52"), "{line:?}");
+        assert!(!line.contains('\u{7}'), "{line:?}");
+        assert!(!line.contains('\u{9b}'), "{line:?}");
+        assert!(line.contains("PWNED"), "{line:?}");
+    }
+}

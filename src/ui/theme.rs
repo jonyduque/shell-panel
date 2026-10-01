@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::core::config::{Config, IconConfig};
@@ -139,6 +141,21 @@ pub fn format_suggestion_line_with_theme(
     )
 }
 
+/// Replaces control characters (C0, DEL, C1) with `?` so suggestion text cannot inject
+/// terminal escape sequences when drawn.
+fn inert(text: &str) -> Cow<'_, str> {
+    let is_control = |c: char| c < ' ' || c == '\u{7f}' || ('\u{80}'..='\u{9f}').contains(&c);
+    if text.chars().any(is_control) {
+        Cow::Owned(
+            text.chars()
+                .map(|c| if is_control(c) { '?' } else { c })
+                .collect(),
+        )
+    } else {
+        Cow::Borrowed(text)
+    }
+}
+
 /// Formats a suggestion with custom minimum and maximum column widths using a specific theme.
 pub fn format_suggestion_line_with_theme_and_min_width(
     sug: &Suggestion,
@@ -157,14 +174,14 @@ pub fn format_suggestion_line_with_theme_and_min_width(
         &theme.unselected_prefix
     };
     let icon = theme.icon_for(sug.kind);
-    let label = format!("{}{}{}", prefix, icon, sug.display);
+    let label = format!("{}{}{}", prefix, icon, inert(&sug.display));
     let label_width = label.as_str().width();
 
     if selected {
         let mut plain = label;
         if let Some(desc) = &sug.description {
             plain.push_str("  ");
-            plain.push_str(desc);
+            plain.push_str(&inert(desc));
         }
 
         let plain_width = plain.as_str().width();
@@ -177,7 +194,7 @@ pub fn format_suggestion_line_with_theme_and_min_width(
             theme.selected_start, truncated, theme.selected_end
         )
     } else if let Some(desc) = &sug.description {
-        let desc_with_gap = format!("  {}", desc);
+        let desc_with_gap = format!("  {}", inert(desc));
         let desc_width = desc_with_gap.as_str().width();
         let total_width = label_width + desc_width;
 
