@@ -45,6 +45,13 @@ function Invoke-Script([string]$name, [string[]]$arguments) {
     $LASTEXITCODE
 }
 
+# For argument forms -File cannot express, such as an explicit -Purge:$false.
+function Invoke-CommandLine([string]$command) {
+    $script:lastOutput = @(& $Shell -NoProfile -ExecutionPolicy Bypass -Command $command 2>&1 | ForEach-Object { "$_" })
+    $script:lastOutput | ForEach-Object { Write-Host "    $_" }
+    $LASTEXITCODE
+}
+
 function Get-RawUserPath {
     $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
     try { [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) }
@@ -92,6 +99,19 @@ try {
     Write-Host '== reinstall'
     Assert ((Invoke-Script 'install.ps1' $install) -eq 0) 'reinstall exits 0'
     Assert ((Get-PathCount) -eq 1) 'reinstall does not duplicate the PATH entry'
+    $fragment = Get-Content -LiteralPath (Join-Path $fragmentDir 'shell-panel.json') -Raw | ConvertFrom-Json
+    Assert (@($fragment.profiles).Count -eq 1) 'reinstall keeps a single Terminal profile'
+
+    Write-Host '== update while shell-panel runs'
+    # A running image is mapped with read and delete sharing: it cannot be overwritten, but it
+    # can be renamed. This handle reproduces that lock without starting a session.
+    $lock = [IO.File]::Open($installedExe, 'Open', 'Read', [IO.FileShare]'Read, Delete')
+    try {
+        Assert ((Invoke-Script 'install.ps1' $install) -eq 0) 'install succeeds while the old binary is in use'
+    } finally { $lock.Dispose() }
+    Assert (Test-Path -LiteralPath "$installedExe.old") 'the binary in use was moved aside'
+    Assert ((Invoke-Script 'install.ps1' $install) -eq 0) 'the next install exits 0'
+    Assert (-not (Test-Path -LiteralPath "$installedExe.old")) 'the next install deletes the moved-aside binary'
 
     Write-Host '== tampered checksum'
     $hashBefore = (Get-FileHash -LiteralPath $installedExe).Hash
@@ -101,22 +121,50 @@ try {
     Assert ((Invoke-Script 'install.ps1' $tampered) -ne 0) 'a checksum mismatch fails the install'
     Assert ((Get-FileHash -LiteralPath $installedExe).Hash -eq $hashBefore) 'a checksum mismatch leaves the installed binary alone'
 
-    Write-Host '== foreign directory'
-    $foreign = Join-Path $work 'not-shell-panel'
-    New-Item -ItemType Directory -Path $foreign | Out-Null
-    Set-Content -LiteralPath (Join-Path $foreign 'keep.txt') -Value 'x'
-    Assert ((Invoke-Script 'uninstall.ps1' @('-InstallDir', $foreign, '-TerminalFragmentDir', $fragmentDir)) -ne 0) 'uninstall refuses a directory without shell-panel.exe'
-    Assert (Test-Path -LiteralPath (Join-Path $foreign 'keep.txt')) 'the foreign directory is untouched'
+    Write-Host '== shared directory'
+    # A folder of other tools, one of them happening to be a shell-panel.exe copied by hand.
+    $shared = Join-Path $work 'tools'
+    New-Item -ItemType Directory -Path $shared | Out-Null
+    Set-Content -LiteralPath (Join-Path $shared 'other-tool.txt') -Value 'x'
+    Copy-Item -LiteralPath $installedExe -Destination $shared
+    $sharedInstall = @('-InstallDir', $shared, '-TerminalFragmentDir', $fragmentDir, '-ZipPath', $ZipPath, '-ChecksumsPath', $sums)
+    Assert ((Invoke-Script 'install.ps1' $sharedInstall) -ne 0) 'install refuses a folder that already holds other files'
+    Assert ((Invoke-Script 'uninstall.ps1' @('-InstallDir', $shared, '-TerminalFragmentDir', $fragmentDir)) -ne 0) 'uninstall refuses a folder the installer did not create'
+    Assert ((Test-Path -LiteralPath (Join-Path $shared 'other-tool.txt')) -and (Test-Path -LiteralPath (Join-Path $shared 'shell-panel.exe'))) 'the shared folder is untouched'
+
+    Write-Host '== constrained language'
+    $clm = "`$ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'; & '$(Join-Path $root 'uninstall.ps1')' -InstallDir '$installDir' -TerminalFragmentDir '$fragmentDir'"
+    Assert ((Invoke-CommandLine $clm) -ne 0) 'uninstall refuses to run in ConstrainedLanguage mode'
+    Assert (($script:lastOutput -join "`n") -match 'needs FullLanguage mode') 'the refusal names FullLanguage mode'
+    Assert ((Test-Path -LiteralPath $installedExe) -and (Get-PathCount) -eq 1) 'ConstrainedLanguage leaves the install intact'
 
     Write-Host '== uninstall'
+    Set-Content -LiteralPath (Join-Path $installDir 'notes.txt') -Value 'mine'
     $uninstall = @('-InstallDir', $installDir, '-TerminalFragmentDir', $fragmentDir)
     Assert ((Invoke-Script 'uninstall.ps1' $uninstall) -eq 0) 'uninstall exits 0'
-    Assert (-not (Test-Path -LiteralPath $installDir)) 'install dir removed'
+    Assert (-not (Test-Path -LiteralPath $installedExe)) 'binary removed'
+    Assert (Test-Path -LiteralPath (Join-Path $installDir 'notes.txt')) 'files the installer did not write are kept'
     Assert ((Get-PathCount) -eq 0) 'PATH entry removed'
     Assert ((Get-RawUserPath) -like "*$marker*") 'uninstall keeps the other PATH entries as written'
     Assert ($envKey.GetValueKind('Path') -eq [Microsoft.Win32.RegistryValueKind]::ExpandString) 'PATH is still REG_EXPAND_SZ after uninstall'
     Assert (-not (Test-Path -LiteralPath $fragmentDir)) 'Terminal fragment removed'
     Assert ((Invoke-Script 'uninstall.ps1' $uninstall) -eq 0) 'a second uninstall succeeds'
+    Assert (Test-Path -LiteralPath (Join-Path $installDir 'notes.txt')) 'a second uninstall still keeps the user file'
+
+    Write-Host '== purge'
+    $profileDir = Join-Path $work 'profile'
+    $configFile = Join-Path $profileDir '.config\shell-panel.toml'
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $configFile) | Out-Null
+    Set-Content -LiteralPath $configFile -Value 'max_suggestions = 5'
+    $savedProfile = $env:USERPROFILE
+    $env:USERPROFILE = $profileDir
+    try {
+        $keep = "& '$(Join-Path $root 'uninstall.ps1')' -Purge:`$false -InstallDir '$installDir' -TerminalFragmentDir '$fragmentDir'"
+        Assert ((Invoke-CommandLine $keep) -eq 0) 'uninstall -Purge:$false exits 0'
+        Assert (Test-Path -LiteralPath $configFile) 'uninstall -Purge:$false keeps the configuration'
+        Assert ((Invoke-Script 'uninstall.ps1' @('-Purge', '-InstallDir', $installDir, '-TerminalFragmentDir', $fragmentDir)) -eq 0) 'uninstall -Purge exits 0'
+        Assert (-not (Test-Path -LiteralPath $configFile)) 'uninstall -Purge removes the configuration'
+    } finally { $env:USERPROFILE = $savedProfile }
 
     Write-Host "test result: ok. $script:passed passed; 0 failed"
 } catch {
@@ -126,5 +174,9 @@ try {
 } finally {
     if ($hadPath) { $envKey.SetValue('Path', $savedPath, $savedKind) } else { $envKey.DeleteValue('Path', $false) }
     $envKey.Close()
+    # The last broadcast came from uninstall.ps1 while PATH still held the test entry: broadcast
+    # again so Explorer hands new processes the restored PATH (same trick as install.ps1).
+    [Environment]::SetEnvironmentVariable('SHELL_PANEL_INSTALLER', '1', 'User')
+    [Environment]::SetEnvironmentVariable('SHELL_PANEL_INSTALLER', $null, 'User')
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
 }

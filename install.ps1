@@ -16,11 +16,19 @@
 .PARAMETER TerminalFragmentDir
     Testing only: where the Windows Terminal profile fragment is written.
 #>
-# The body is a script block invoked with the script's arguments: piped through `iex` a script
-# runs in the caller's scope, and its variables, functions and preferences would stay behind in
-# the user's session. A child scope keeps them out, and `throw` (never `exit`) ends it.
+[CmdletBinding()]
+param(
+    [string]$Version,
+    [string]$InstallDir,
+    [string]$ZipPath,
+    [string]$ChecksumsPath,
+    [string]$TerminalFragmentDir
+)
+# The parameters are bound here and handed to a script block that runs in a child scope: piped
+# through `iex` a script runs in the caller's scope, and the block keeps its variables, functions
+# and preferences out of the user's session; `throw` (never `exit`) ends it. @PSBoundParameters,
+# not @args: @args splits `-Switch:$false` into two arguments. Defaults live in the block.
 & {
-    [CmdletBinding()]
     param(
         [string]$Version,
         [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'Programs\shell-panel'),
@@ -30,6 +38,12 @@
     )
     Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
+    # The calls below into .NET are refused in ConstrainedLanguage mode; fail before touching anything.
+    if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
+        throw "The shell-panel installer needs FullLanguage mode (this session is $($ExecutionContext.SessionState.LanguageMode)). Nothing was installed."
+    }
+    # A relative folder would land in PATH as-is and resolve against each process's current folder.
+    $InstallDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($InstallDir)
     # The progress bar makes Invoke-WebRequest many times slower on Windows PowerShell 5.1.
     $ProgressPreference = 'SilentlyContinue'
 
@@ -135,17 +149,36 @@
         $exeSource = Join-Path $extract 'shell-panel.exe'
         if (-not (Test-Path -LiteralPath $exeSource)) { throw "$zipName does not contain shell-panel.exe. Nothing was installed." }
 
+        # The marker tells uninstall.ps1 which folder this installer owns. Never write into a folder
+        # of other files: the uninstaller would later be asked to clean it.
+        $marker = Join-Path $InstallDir '.shell-panel-install'
+        if ((Test-Path -LiteralPath $InstallDir) -and -not (Test-Path -LiteralPath $marker) -and
+            @(Get-ChildItem -LiteralPath $InstallDir -Force).Count -gt 0) {
+            throw "$InstallDir already holds other files and is not a shell-panel install. Pass an empty or new folder to -InstallDir. Nothing was installed."
+        }
+
         New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
         $exe = Join-Path $InstallDir 'shell-panel.exe'
+        $aside = "$exe.old"
+        # Left by an update made while shell-panel was running; still locked if that session lives.
+        Remove-Item -LiteralPath $aside -Force -ErrorAction SilentlyContinue
         try {
             Copy-Item -LiteralPath $exeSource -Destination $exe -Force
         } catch {
-            throw "Could not replace $exe ($($_.Exception.Message)). Close every shell-panel session and run the installer again."
+            # A running shell-panel.exe cannot be overwritten, but Windows lets it be renamed: move
+            # it aside so that updating from inside a session works. The next install deletes it.
+            try {
+                Move-Item -LiteralPath $exe -Destination $aside -Force
+                Copy-Item -LiteralPath $exeSource -Destination $exe
+            } catch {
+                throw "Could not replace $exe ($($_.Exception.Message)). Close every shell-panel session and run the installer again."
+            }
         }
         foreach ($doc in 'LICENSE', 'README.md') {
             $docSource = Join-Path $extract $doc
             if (Test-Path -LiteralPath $docSource) { Copy-Item -LiteralPath $docSource -Destination $InstallDir -Force }
         }
+        Set-Content -LiteralPath $marker -Value 'Written by the shell-panel installer. uninstall.ps1 removes only shell-panel.exe, LICENSE, README.md and this file from this folder.'
         Write-Host "[OK] Installed $exe"
 
         Add-UserPath $InstallDir
@@ -155,10 +188,11 @@
         Write-Host '[OK] Windows Terminal profile "PowerShell (shell-panel)" written'
 
         $installed = & $exe --version
+        if ($LASTEXITCODE -ne 0) { throw "$exe --version failed (exit $LASTEXITCODE); the installed binary does not run." }
         Write-Host "[OK] $installed"
         Write-Host ''
         Write-Host '[i] Open the "PowerShell (shell-panel)" profile in Windows Terminal, or run shell-panel in a new terminal window.'
     } finally {
         Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
     }
-} @args
+} @PSBoundParameters

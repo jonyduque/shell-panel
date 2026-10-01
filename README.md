@@ -46,7 +46,13 @@ Sources are queried concurrently and merged: highest priority first, one entry p
 irm https://github.com/jonyduque/shell-panel/releases/latest/download/install.ps1 | iex
 ```
 
-The installer picks the x64 or ARM64 build, checks it against the release's `SHA256SUMS.txt`, installs `shell-panel.exe` into `%LOCALAPPDATA%\Programs\shell-panel`, adds that folder to your user `PATH` and adds a **PowerShell (shell-panel)** profile to Windows Terminal. Run it again to update. A specific version: download `install.ps1` from the release and run `.\install.ps1 -Version 0.2.0`.
+The installer picks the x64 or ARM64 build, checks it against the release's `SHA256SUMS.txt`, installs `shell-panel.exe` into `%LOCALAPPDATA%\Programs\shell-panel`, adds that folder to your user `PATH` and adds a **PowerShell (shell-panel)** profile to Windows Terminal. Run it again to update (also from inside a shell-panel session). A specific version, or another folder (it must be new or empty):
+
+```powershell
+& ([scriptblock]::Create((irm https://github.com/jonyduque/shell-panel/releases/latest/download/install.ps1))) -Version 0.2.0
+```
+
+A downloaded `install.ps1` run as a file is blocked by the default execution policy; use the line above instead.
 
 To uninstall (your `~\.config\shell-panel.toml` and custom specs are kept unless you add `-Purge`):
 
