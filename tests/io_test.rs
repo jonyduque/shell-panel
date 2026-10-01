@@ -250,3 +250,23 @@ fn test_function_keys_keep_modifiers() {
         b"\x1b[24~".to_vec()
     );
 }
+
+#[test]
+fn test_alt_enter_is_a_record_not_a_carriage_return() {
+    let enter = |m| encode_key_event(&make_key_event(KeyCode::Enter, m, KeyEventKind::Press));
+    assert_eq!(enter(KeyModifiers::ALT), b"\x1b[13;28;13;1;2;1_".to_vec());
+    assert_eq!(
+        enter(KeyModifiers::ALT | KeyModifiers::SHIFT),
+        b"\x1b[13;28;13;1;18;1_".to_vec()
+    );
+    // Unchanged:
+    assert_eq!(enter(KeyModifiers::NONE), b"\r".to_vec());
+    assert_eq!(
+        enter(KeyModifiers::SHIFT),
+        b"\x1b[13;28;13;1;16;1_".to_vec()
+    );
+    assert_eq!(
+        enter(KeyModifiers::CONTROL),
+        b"\x1b[13;28;13;1;8;1_".to_vec()
+    );
+}

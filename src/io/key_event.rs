@@ -111,10 +111,13 @@ pub fn encode_key_event(event: &KeyEvent) -> Vec<u8> {
             // win32-input-mode record: Vk=13, Sc=28, Uc=13, KeyDown, control-key state, repeat 1.
             let shift = event.modifiers.contains(KeyModifiers::SHIFT);
             let ctrl = event.modifiers.contains(KeyModifiers::CONTROL);
-            match (shift, ctrl) {
-                (false, false) => vec![b'\r'],
+            let alt = event.modifiers.contains(KeyModifiers::ALT);
+            match (shift, ctrl, alt) {
+                (false, false, false) => vec![b'\r'],
                 _ => {
-                    let state = (if shift { 0x10 } else { 0 }) | (if ctrl { 0x08 } else { 0 });
+                    let state = (if shift { 0x10 } else { 0 })
+                        | (if ctrl { 0x08 } else { 0 })
+                        | (if alt { 0x02 } else { 0 });
                     format!("\x1b[13;28;13;1;{};1_", state).into_bytes()
                 }
             }
