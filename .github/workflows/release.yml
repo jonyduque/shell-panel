@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify tag and gate
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches Cargo.toml
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+          if ("v$version" -ne $env:GITHUB_REF_NAME) {
+              throw "Tag $env:GITHUB_REF_NAME does not match version $version in Cargo.toml"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Toolchain components
+        run: rustup component add rustfmt clippy
+      - name: Gate
+        shell: pwsh
+        run: ./.claude/skills/shell-panel-review/scripts/verify.ps1
+
+  build:
+    name: Build ${{ matrix.arch }}
+    needs: verify
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            arch: x64
+          - target: aarch64-pc-windows-msvc
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add target
+        run: rustup target add ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package
+        shell: pwsh
+        run: |
+          $name = "shell-panel-${{ needs.verify.outputs.version }}-${{ matrix.arch }}"
+          $stage = Join-Path $env:RUNNER_TEMP $name
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -LiteralPath "target/${{ matrix.target }}/release/shell-panel.exe", LICENSE, README.md -Destination $stage
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath "$name.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zip-${{ matrix.arch }}
+          path: shell-panel-*.zip
+          if-no-files-found: error
+
+  installer:
+    name: Installer test
+    needs: [verify, build]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: zip-x64
+          path: dist
+      - name: Installer under PowerShell 7
+        shell: pwsh
+        run: ./scripts/test-installer.ps1 -Shell pwsh -ZipPath dist/shell-panel-${{ needs.verify.outputs.version }}-x64.zip
+      - name: Installer under Windows PowerShell 5.1
+        shell: pwsh
+        run: ./scripts/test-installer.ps1 -Shell powershell -ZipPath dist/shell-panel-${{ needs.verify.outputs.version }}-x64.zip
+
+  publish:
+    name: Publish release
+    needs: [verify, build, installer]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: zip-*
+          path: dist
+          merge-multiple: true
+      - name: Create release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zips = Get-ChildItem dist -Filter *.zip | Sort-Object Name
+          if ($zips.Count -ne 2) { throw "expected 2 zips, found $($zips.Count)" }
+          $zips | ForEach-Object { '{0}  {1}' -f (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } |
+              Set-Content -LiteralPath dist/SHA256SUMS.txt -Encoding ascii
+          $arguments = @($env:GITHUB_REF_NAME) + $zips.FullName + @('dist/SHA256SUMS.txt', 'install.ps1', 'uninstall.ps1',
+              '--repo', $env:GITHUB_REPOSITORY, '--title', $env:GITHUB_REF_NAME, '--generate-notes')
+          if ($env:GITHUB_REF_NAME -like '*-*') { $arguments += '--prerelease' }
+          gh release create @arguments
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }

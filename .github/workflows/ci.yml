@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Gate (fmt, clippy, tests)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain components
+        run: rustup component add rustfmt clippy
+      - name: Gate
+        shell: pwsh
+        run: ./.claude/skills/shell-panel-review/scripts/verify.ps1
+
+  installer:
+    name: Installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build release binary
+        run: cargo build --release --locked
+      - name: Installer under PowerShell 7
+        shell: pwsh
+        run: ./scripts/test-installer.ps1 -Shell pwsh
+      - name: Installer under Windows PowerShell 5.1
+        shell: pwsh
+        run: ./scripts/test-installer.ps1 -Shell powershell
