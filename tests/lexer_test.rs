@@ -261,8 +261,32 @@ fn test_lexer_and_active_token_agree_on_separators() {
         "git status & git ch",
         "a | b; c && git ch",
         "$r = (git sta",
+        "git log 2>&1 --on",
+        "git `\nsta",
+        "git status `\n",
+        "git status `\r\n  --sh",
     ] {
         let last = texts(input).pop().unwrap();
         assert_eq!(active_token_raw(input), last, "input: {input:?}");
     }
+}
+
+#[test]
+fn test_redirection_ampersand_is_not_a_separator() {
+    assert_eq!(
+        texts("git log 2>&1 --on"),
+        vec!["git", "log", "2>&1", "--on"]
+    );
+    assert_eq!(
+        texts("git log *>&1 --on"),
+        vec!["git", "log", "*>&1", "--on"]
+    );
+    assert_eq!(active_token_raw("git log 2>&1 --on"), "--on");
+}
+
+#[test]
+fn test_active_token_raw_honours_line_continuation() {
+    assert_eq!(active_token_raw("git `\nsta"), "sta");
+    assert_eq!(active_token_raw("git status `\n"), "");
+    assert_eq!(active_token_raw("git status `\r\n  --sh"), "--sh");
 }

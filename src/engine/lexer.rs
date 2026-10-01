@@ -134,6 +134,9 @@ fn split_segments(input: &str) -> Vec<&str> {
                     } else {
                         2
                     };
+                } else if ch == '&' && i > 0 && chars[i - 1].1 == '>' {
+                    // `2>&1`, `*>&1`: part of a redirection, not a separator.
+                    i += 1;
                 } else if COMMAND_SEPARATORS.contains(&ch) {
                     segments.push(&input[start..byte_pos]);
                     i += 1;
@@ -315,15 +318,23 @@ pub fn active_token_raw(input: &str) -> &str {
         let next = i + c.len_utf8();
         match state {
             DelimQuoteState::Normal => match c {
+                '&' if input[..i].ends_with('>') => {}
                 c if c == ' ' || c == '\t' || COMMAND_SEPARATORS.contains(&c) => start = next,
                 '\'' => state = DelimQuoteState::SingleQuote,
                 '"' => state = DelimQuoteState::DoubleQuote,
                 '`' => {
-                    if chars.next().map(|(_, c)| c) == Some('\r') {
-                        let mut peek = chars.clone();
-                        if peek.next().map(|(_, c)| c) == Some('\n') {
-                            chars.next();
+                    // A backtick before a line break is a continuation: a word boundary.
+                    match chars.next() {
+                        Some((j, '\r')) => {
+                            start = j + 1;
+                            let mut peek = chars.clone();
+                            if let Some((k, '\n')) = peek.next() {
+                                chars.next();
+                                start = k + 1;
+                            }
                         }
+                        Some((j, '\n')) => start = j + 1,
+                        _ => {}
                     }
                 }
                 '=' if input[start..i].starts_with('-') => start = next,
