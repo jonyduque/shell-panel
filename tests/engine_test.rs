@@ -428,6 +428,11 @@ async fn test_load_dir_adds_user_specs_and_reports_bad_files() {
         r#"{"name":"mytool","subcommands":[{"name":"deploy","description":"Ship it"}]}"#,
     )
     .unwrap();
+    std::fs::write(
+        dir.join("git.json"),
+        r#"{"name":"git","subcommands":[{"name":"onlymine"}]}"#,
+    )
+    .unwrap();
     std::fs::write(dir.join("broken.json"), "{").unwrap();
     std::fs::write(dir.join("notes.txt"), "ignored").unwrap();
 
@@ -439,6 +444,13 @@ async fn test_load_dir_adds_user_specs_and_reports_bad_files() {
     assert!(warnings[0].contains("broken.json"));
     let sugs = provider.complete("mytool dep", "").await;
     assert_eq!(sugs[0].name, "deploy");
+    let names: Vec<String> = provider
+        .complete("git ", "")
+        .await
+        .into_iter()
+        .map(|s| s.name)
+        .collect();
+    assert_eq!(names, vec!["onlymine".to_string()]);
 }
 
 #[test]

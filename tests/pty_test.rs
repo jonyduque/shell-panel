@@ -2,7 +2,7 @@ use std::io::Write;
 use std::time::Duration;
 
 use shell_panel::pty::conpty::{watch_exit, ConPtySession, SpawnOptions};
-use shell_panel::pty::shell::{detect_shell, is_supported_shell, ShellType};
+use shell_panel::pty::shell::{detect_shell, detect_shell_in, is_supported_shell, ShellType};
 
 #[test]
 fn test_shell_type_executable_name() {
@@ -36,9 +36,25 @@ fn test_is_supported_shell() {
 }
 
 #[test]
-fn test_detect_shell_auto() {
-    let shell = detect_shell(None);
-    assert!(shell == ShellType::Pwsh || shell == ShellType::Powershell);
+fn test_detect_shell_prefers_pwsh_on_path() {
+    let with = std::env::temp_dir().join(format!("sp_pwsh_{}", std::process::id()));
+    let without = std::env::temp_dir().join(format!("sp_nopwsh_{}", std::process::id()));
+    std::fs::create_dir_all(&with).unwrap();
+    std::fs::create_dir_all(&without).unwrap();
+    std::fs::write(with.join("pwsh.exe"), b"").unwrap();
+
+    let path = std::env::join_paths([&without, &with]).unwrap();
+    assert_eq!(detect_shell_in(None, Some(&path)), ShellType::Pwsh);
+    let path = std::env::join_paths([&without]).unwrap();
+    assert_eq!(detect_shell_in(None, Some(&path)), ShellType::Powershell);
+    assert_eq!(detect_shell_in(None, None), ShellType::Powershell);
+    assert_eq!(
+        detect_shell_in(Some("powershell"), Some(&path)),
+        ShellType::Powershell
+    );
+
+    let _ = std::fs::remove_dir_all(&with);
+    let _ = std::fs::remove_dir_all(&without);
 }
 
 #[test]

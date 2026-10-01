@@ -462,3 +462,15 @@ fn test_restore_line_keeps_colors() {
         vt100::Color::Default
     );
 }
+
+#[test]
+fn test_zero_max_suggestions_means_five_and_still_renders() {
+    assert_eq!(SuggestionState::new(0).max_rows, 5);
+    let mut state = SuggestionState::new(0);
+    state.set_suggestions(many(3));
+    let term = HeadlessTerminal::new(80, 24);
+    let mut out = Vec::new();
+    let layout =
+        Renderer::render_dropdown(&state, &term, &Theme::default(), 0, 0, &mut out).unwrap();
+    assert_eq!(layout.map(|l| l.row_count), Some(3));
+}

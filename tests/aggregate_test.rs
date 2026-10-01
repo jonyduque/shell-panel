@@ -368,3 +368,10 @@ fn test_external_suggestion_inside_quotes_deletes_the_closing_quote() {
         }
     );
 }
+
+#[test]
+fn test_plan_replacement_survives_a_range_after_the_cursor() {
+    let r = report("abcdef", 2, 3, 2, vec![]);
+    let shell = Suggestion::new("xyz", "xyz", None, 70).with_shell_range();
+    let _ = plan_replacement(&r, &shell); // must not panic
+}

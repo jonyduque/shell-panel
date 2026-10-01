@@ -33,6 +33,14 @@ pub fn is_supported_shell(name: &str) -> bool {
 /// - Searches PATH for `pwsh.exe`. If found, returns `ShellType::Pwsh`.
 /// - Otherwise returns `ShellType::Powershell`.
 pub fn detect_shell(override_shell: Option<&str>) -> ShellType {
+    detect_shell_in(override_shell, env::var_os("PATH").as_deref())
+}
+
+/// Same as [`detect_shell`], searching `path_var` instead of the process PATH.
+pub fn detect_shell_in(
+    override_shell: Option<&str>,
+    path_var: Option<&std::ffi::OsStr>,
+) -> ShellType {
     if let Some(s) = override_shell {
         if s.eq_ignore_ascii_case("powershell") || s.eq_ignore_ascii_case("powershell.exe") {
             ShellType::Powershell
@@ -40,8 +48,8 @@ pub fn detect_shell(override_shell: Option<&str>) -> ShellType {
             ShellType::Pwsh
         }
     } else {
-        if let Some(path_var) = env::var_os("PATH") {
-            for dir in env::split_paths(&path_var) {
+        if let Some(path_var) = path_var {
+            for dir in env::split_paths(path_var) {
                 let candidate = dir.join("pwsh.exe");
                 if candidate.is_file() {
                     return ShellType::Pwsh;

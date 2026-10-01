@@ -1,6 +1,8 @@
 use shell_panel::core::config::{ColorConfig, Config, IconConfig};
 use shell_panel::engine::provider::{Suggestion, SuggestionKind};
-use shell_panel::ui::theme::{format_suggestion_line, format_suggestion_line_with_theme, Theme};
+use shell_panel::ui::theme::{
+    format_suggestion_line, format_suggestion_line_with_theme, truncate_to_width, Theme,
+};
 
 #[test]
 fn test_format_suggestion_line_with_icons() {
@@ -191,5 +193,23 @@ fn test_control_characters_in_suggestion_text_are_drawn_inert() {
         assert!(!line.contains('\u{7}'), "{line:?}");
         assert!(!line.contains('\u{9b}'), "{line:?}");
         assert!(line.contains("PWNED"), "{line:?}");
+    }
+}
+
+#[test]
+fn test_truncation_counts_emoji_as_two_columns() {
+    assert_eq!(truncate_to_width("\u{1f4c1}ab", 3), "\u{1f4c1}a");
+    let theme = Theme::default();
+    let sug = Suggestion::new("src", "src", Some("a long description".into()), 50)
+        .with_kind(SuggestionKind::Directory);
+    for selected in [false, true] {
+        let line = format_suggestion_line_with_theme(&sug, selected, 10, &theme);
+        let mut screen = vt100::Parser::new(1, 40, 0);
+        screen.process(line.as_bytes());
+        let drawn = screen.screen().contents();
+        assert!(
+            unicode_width::UnicodeWidthStr::width(drawn.trim_end()) <= 10,
+            "{drawn:?}"
+        );
     }
 }

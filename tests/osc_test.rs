@@ -143,6 +143,16 @@ fn test_report_ranges() {
         ..report
     };
     assert_eq!(away.replacement_range(), None);
+
+    // A range that starts after the cursor cannot be applied either; slicing it would panic.
+    let ahead = ShellReport {
+        line: "abcdef".into(),
+        cursor: 2,
+        replacement_index: 3,
+        replacement_length: 2,
+        matches: vec![],
+    };
+    assert_eq!(ahead.replacement_range(), None);
 }
 
 #[test]

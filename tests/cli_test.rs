@@ -51,3 +51,16 @@ fn test_check_reports_session_state() {
         Some(1)
     );
 }
+
+#[test]
+fn test_unsupported_shell_exits_with_code_2() {
+    let out = run_with_session_env(&["--shell", "bash"], false);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("unsupported shell \"bash\""));
+
+    let config = std::env::temp_dir().join(format!("sp_bash_{}.toml", std::process::id()));
+    std::fs::write(&config, "shell = \"bash\"\n").unwrap();
+    let out = run_with_session_env(&["--config", config.to_str().unwrap()], false);
+    let _ = std::fs::remove_file(&config);
+    assert_eq!(out.status.code(), Some(2));
+}
