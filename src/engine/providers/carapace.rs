@@ -3,6 +3,7 @@ use tokio::process::Command;
 
 use crate::engine::lexer::{lex_command_line, CommandToken};
 use crate::engine::provider::{CompletionProvider, Suggestion, SuggestionKind};
+use crate::engine::quote::quote_for_powershell;
 
 /// Represents an entry in Carapace's export JSON format.
 #[derive(Debug, Deserialize)]
@@ -88,7 +89,12 @@ pub fn parse_carapace_json(json_str: &str) -> Vec<Suggestion> {
             } else {
                 SuggestionKind::Subcommand
             };
-            Suggestion::new(item.value, display, description, 70).with_kind(kind)
+            let name = if item.value.starts_with('-') {
+                item.value.clone()
+            } else {
+                quote_for_powershell(&item.value)
+            };
+            Suggestion::new(name, display, description, 70).with_kind(kind)
         })
         .collect()
 }

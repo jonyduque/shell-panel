@@ -440,3 +440,26 @@ async fn test_load_dir_adds_user_specs_and_reports_bad_files() {
     let sugs = provider.complete("mytool dep", "").await;
     assert_eq!(sugs[0].name, "deploy");
 }
+
+#[test]
+fn test_carapace_values_are_quoted_for_powershell() {
+    let sugs = parse_carapace_json(
+        r#"{"values":[{"value":"My Dir/","display":"My Dir/"},{"value":"--force"},{"value":"main"}]}"#,
+    );
+    let names: Vec<&str> = sugs.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, vec!["'My Dir/'", "--force", "main"]);
+    assert_eq!(sugs[0].display, "My Dir/");
+}
+
+#[test]
+fn test_every_powershell_metacharacter_is_quoted() {
+    for path in [
+        r"C:\a;b", r"C:\x$y", r"C:\a&b", r"C:\p(1)", r"C:\a b", r"C:\a,b", r"C:\a|b",
+    ] {
+        let quoted = quote_for_powershell(path);
+        assert!(
+            quoted.starts_with('\'') && quoted.ends_with('\''),
+            "{path} -> {quoted}"
+        );
+    }
+}
