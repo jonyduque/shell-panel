@@ -12,6 +12,16 @@ use shell_panel::shell::osc::{parse_osc_sequence, OscEvent, REPORT_REQUEST_KEY};
 
 const TOKEN: &str = "0123456789abcdef0123456789abcdef";
 
+/// Removes `dir` once the killed shell has let go of it as its working directory.
+fn remove_dir_when_released(dir: &std::path::Path) {
+    for _ in 0..50 {
+        if std::fs::remove_dir_all(dir).is_ok() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 #[test]
 fn test_base64_encode_vectors() {
     assert_eq!(base64_encode(b""), "");
@@ -204,6 +214,8 @@ fn test_text_outside_the_console_code_page_survives_the_report() {
     // 😀 is two UTF-16 units: the cursor counts them both.
     assert_eq!(report.cursor, line.encode_utf16().count());
     assert_eq!(report.text_before_cursor(), Some(line));
+    drop(term);
+    remove_dir_when_released(&dir);
 }
 
 #[test]
@@ -228,4 +240,6 @@ fn test_completion_of_a_name_outside_the_code_page_is_not_a_wildcard() {
         "matches: {:?}",
         report.matches
     );
+    drop(term);
+    remove_dir_when_released(&dir);
 }

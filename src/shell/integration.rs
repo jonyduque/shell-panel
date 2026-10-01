@@ -33,7 +33,9 @@ pub fn base64_encode(data: &[u8]) -> String {
 pub fn new_session_token() -> String {
     use std::collections::hash_map::RandomState;
     use std::hash::{BuildHasher, Hasher};
-    // RandomState is keyed from the OS random source; two 64-bit hashes make 128 bits.
+    // RandomState::new() reuses one per-thread 128-bit key from the OS random source and
+    // increments it, so the two halves are SipHash outputs under related keys, not two
+    // independent draws. The secret's strength is that 128-bit OS-random key.
     (0..2u8)
         .map(|i| {
             let mut hasher = RandomState::new().build_hasher();

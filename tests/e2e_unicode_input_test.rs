@@ -15,6 +15,16 @@ fn answer_before(term: &Terminal, marker: &str) -> Option<String> {
     at.checked_sub(1).map(|i| lines[i].to_string())
 }
 
+/// Removes `dir` once the killed shell has let go of it as its working directory.
+fn remove_dir_when_released(dir: &std::path::Path) {
+    for _ in 0..50 {
+        if std::fs::remove_dir_all(dir).is_ok() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 #[test]
 fn test_characters_outside_the_bmp_reach_powershell_once() {
     let dir = std::env::temp_dir().join(format!("sp_e2e_astral_{}", std::process::id()));
@@ -40,4 +50,6 @@ fn test_characters_outside_the_bmp_reach_powershell_once() {
         "screen: {}",
         term.screen()
     );
+    drop(term);
+    remove_dir_when_released(&dir);
 }

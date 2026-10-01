@@ -42,8 +42,11 @@ impl CommandState {
             OscEvent::ReadLineStarted { cwd } => {
                 self.reading_line = true;
                 self.report = None;
-                // Every report of the previous line came before this marker: a request still
-                // counted was never answered and never will be.
+                // Trade-off: forget requests that were never answered (swallowed chords), so
+                // they cannot make a later report look stale. The cost is a residual window of
+                // a few milliseconds: a chord written between Enter and the arrival of RE
+                // (reading_line still true) is answered by the next ReadLine, after this
+                // marker, so its report is counted against the next line.
                 self.outstanding_reports = 0;
                 if let Some(cwd) = cwd {
                     self.cwd = cwd;

@@ -25,8 +25,9 @@ fn edited_line(term: &Terminal) -> String {
 
 /// A session where `zzf <Tab>` runs a completer that sleeps `delay_ms` and offers `zzalpha`
 /// when it matches the word being completed. Ends with `zzf z` typed.
-fn session_with_slow_completer(tag: &str, delay_ms: u32) -> Terminal {
-    let mut term = Terminal::shell_panel(&temp_dir(tag));
+fn session_with_slow_completer(tag: &str, delay_ms: u32) -> (Terminal, std::path::PathBuf) {
+    let dir = temp_dir(tag);
+    let mut term = Terminal::shell_panel(&dir);
     assert!(
         term.wait_for_text("PS ", START),
         "screen: {}",
@@ -50,7 +51,7 @@ fn session_with_slow_completer(tag: &str, delay_ms: u32) -> Terminal {
         "screen: {}",
         term.screen()
     );
-    term
+    (term, dir)
 }
 
 /// Lets queued keys, completers and reports finish, pumping output meanwhile.
@@ -58,11 +59,21 @@ fn settle(term: &mut Terminal, secs: u64) {
     term.wait_until(Duration::from_secs(secs), |_| false);
 }
 
+/// Removes `dir` once the killed shell has let go of it as its working directory.
+fn remove_dir_when_released(dir: &std::path::Path) {
+    for _ in 0..50 {
+        if std::fs::remove_dir_all(dir).is_ok() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 #[test]
 fn test_late_report_of_a_timed_out_tab_does_not_answer_the_next_tab() {
     // Tab 1 times out at 3 s (its `\t` goes to PowerShell), Tab 2 at 3.5 s; Tab 1's report
     // lands at 4 s while Tab 2 waits.
-    let mut term = session_with_slow_completer("late", 4000);
+    let (mut term, dir) = session_with_slow_completer("late", 4000);
     term.send(b"\t");
     std::thread::sleep(Duration::from_millis(3500));
     term.send(b"\t");
@@ -75,13 +86,15 @@ fn test_late_report_of_a_timed_out_tab_does_not_answer_the_next_tab() {
     settle(&mut term, 12);
     let line = edited_line(&term);
     assert!(line.ends_with("> zzf zzalpha"), "line: {line:?}");
+    drop(term);
+    remove_dir_when_released(&dir);
 }
 
 #[test]
 fn test_report_of_the_first_tab_does_not_answer_a_tab_typed_after_more_text() {
     // Tab, `q` (Tab 1 is handed to PowerShell before it), Tab: the first report describes
     // `zzf z` and must not be applied to `zzf zzalphaq`.
-    let mut term = session_with_slow_completer("typed", 2500);
+    let (mut term, dir) = session_with_slow_completer("typed", 2500);
     term.send(b"\t");
     std::thread::sleep(Duration::from_millis(500));
     term.send(b"q");
@@ -96,4 +109,6 @@ fn test_report_of_the_first_tab_does_not_answer_a_tab_typed_after_more_text() {
     settle(&mut term, 12);
     let line = edited_line(&term);
     assert!(line.ends_with("> zzf zzalphaq"), "line: {line:?}");
+    drop(term);
+    remove_dir_when_released(&dir);
 }

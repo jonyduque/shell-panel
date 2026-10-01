@@ -5,12 +5,16 @@
 
 # Everything outside printable ASCII, and `\` and `;`, goes as \xHH escapes of its UTF-8 bytes.
 # [Console]::Write encodes with the console code page (OEM 850, 437, ...), which turns every
-# character it cannot represent into '?'; ASCII is the same in all of them. A surrogate pair is
-# matched whole so it becomes one 4-byte UTF-8 sequence.
+# character it cannot represent into '?'; ASCII is the same in all of them. One pass over the
+# bytes of the whole string (a surrogate pair becomes one 4-byte sequence, a lone half U+FFFD):
+# a byte loop is far faster than a regex with a scriptblock per character.
 function Global:__SP-Escape([string]$value) {
-    [regex]::Replace($value, '[\uD800-\uDBFF][\uDC00-\uDFFF]|[^\x20-\x3a\x3c-\x5b\x5d-\x7e]', { param($match)
-        -join ([System.Text.Encoding]::UTF8.GetBytes($match.Value) | ForEach-Object { '\x{0:x2}' -f $_ })
-    })
+    $out = New-Object System.Text.StringBuilder
+    foreach ($b in [System.Text.Encoding]::UTF8.GetBytes($value)) {
+        if ($b -ge 0x20 -and $b -le 0x7e -and $b -ne 0x3b -and $b -ne 0x5c) { [void]$out.Append([char]$b) }
+        else { [void]$out.Append('\x' + $b.ToString('x2')) }
+    }
+    $out.ToString()
 }
 
 function Global:__SP-Send([string]$payload) {
