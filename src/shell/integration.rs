@@ -26,8 +26,33 @@ pub fn base64_encode(data: &[u8]) -> String {
     out
 }
 
-/// The script as `-EncodedCommand` expects it: base64 of its UTF-16LE bytes.
-pub fn encoded_command() -> String {
-    let utf16: Vec<u8> = SCRIPT.encode_utf16().flat_map(u16::to_le_bytes).collect();
+/// A secret that tags every message the integration script sends. Programs run in the session
+/// print into the same stream, but their output cannot know this value, so it cannot forge a
+/// ReadLine marker or a completion report. (Code the user runs in the session is not the threat:
+/// it can type into the console anyway.)
+pub fn new_session_token() -> String {
+    use std::collections::hash_map::RandomState;
+    use std::hash::{BuildHasher, Hasher};
+    // RandomState is keyed from the OS random source; two 64-bit hashes make 128 bits.
+    (0..2u8)
+        .map(|i| {
+            let mut hasher = RandomState::new().build_hasher();
+            hasher.write_u8(i);
+            format!("{:016x}", hasher.finish())
+        })
+        .collect()
+}
+
+/// The integration script for one session: the token assignment, then [`SCRIPT`].
+pub fn script(token: &str) -> String {
+    format!("$Global:__SP_Token = '{token}'\n{SCRIPT}")
+}
+
+/// [`script`] as `-EncodedCommand` expects it: base64 of its UTF-16LE bytes.
+pub fn encoded_command(token: &str) -> String {
+    let utf16: Vec<u8> = script(token)
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect();
     base64_encode(&utf16)
 }

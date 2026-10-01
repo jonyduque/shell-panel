@@ -11,7 +11,14 @@ use shell_panel::pty::shell::detect_shell;
 #[test]
 fn test_embedded_script_defines_the_protocol() {
     use shell_panel::shell::integration::SCRIPT;
-    for marker in ["6973;", "RS;", "'RE'", "CMP;", "Ctrl+Alt+Shift+F12"] {
+    for marker in [
+        "6973;",
+        "RS;",
+        "'RE'",
+        "CMP;",
+        "Ctrl+Alt+Shift+F12",
+        "$($Global:__SP_Token)",
+    ] {
         assert!(SCRIPT.contains(marker), "script lacks {marker}");
     }
 }

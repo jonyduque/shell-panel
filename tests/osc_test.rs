@@ -1,12 +1,18 @@
 use shell_panel::shell::command_state::CommandState;
+use shell_panel::shell::integration::{new_session_token, script};
 use shell_panel::shell::osc::{parse_osc_sequence, unescape_value, OscEvent};
+
+const TOKEN: &str = "0123456789abcdef0123456789abcdef";
 
 #[test]
 fn test_unknown_messages_are_ignored() {
-    assert_eq!(parse_osc_sequence("1337;Other"), None);
-    assert_eq!(parse_osc_sequence("6973;UNKNOWN"), None);
-    assert_eq!(parse_osc_sequence("6973;PS"), None); // protocol v1
-    assert_eq!(parse_osc_sequence(""), None);
+    assert_eq!(parse_osc_sequence("1337;Other", TOKEN), None);
+    assert_eq!(
+        parse_osc_sequence(&format!("6973;{TOKEN};UNKNOWN"), TOKEN),
+        None
+    );
+    assert_eq!(parse_osc_sequence(&format!("6973;{TOKEN};PS"), TOKEN), None); // protocol v1
+    assert_eq!(parse_osc_sequence("", TOKEN), None);
 }
 
 #[test]
@@ -37,7 +43,7 @@ use shell_panel::shell::report::{ShellMatch, ShellReport};
 
 #[test]
 fn test_command_state_follows_readline_markers() {
-    let mut state = CommandState::default();
+    let mut state = CommandState::new(TOKEN);
     assert!(!state.reading_line);
 
     state.handle_osc(OscEvent::ReadLineStarted {
@@ -69,24 +75,29 @@ fn test_command_state_follows_readline_markers() {
 #[test]
 fn test_parse_readline_markers() {
     assert_eq!(
-        parse_osc_sequence(r"6973;RS;C:\x5cdev\x5cx64"),
+        parse_osc_sequence(&format!(r"6973;{TOKEN};RS;C:\x5cdev\x5cx64"), TOKEN),
         Some(OscEvent::ReadLineStarted {
             cwd: Some(r"C:\dev\x64".to_string())
         })
     );
     assert_eq!(
-        parse_osc_sequence("6973;RS;"),
+        parse_osc_sequence(&format!("6973;{TOKEN};RS;"), TOKEN),
         Some(OscEvent::ReadLineStarted { cwd: None })
     );
-    assert_eq!(parse_osc_sequence("6973;RE"), Some(OscEvent::ReadLineEnded));
+    assert_eq!(
+        parse_osc_sequence(&format!("6973;{TOKEN};RE"), TOKEN),
+        Some(OscEvent::ReadLineEnded)
+    );
 }
 
 #[test]
 fn test_parse_completion_report() {
     // The JSON is escaped as a whole: `;` -> \x3b, and each backslash of JSON's `\\` -> \x5c.
-    let payload = r#"6973;CMP;{"line":"cd .\x5c\x5cs\x3b","cursor":7,"replacementIndex":3,"replacementLength":4,"matches":[[".\x5c\x5csrc","src","ProviderContainer","C:\x5c\x5cp\x5c\x5csrc"]]}"#;
+    let payload = format!(
+        r#"6973;{TOKEN};CMP;{{"line":"cd .\x5c\x5cs\x3b","cursor":7,"replacementIndex":3,"replacementLength":4,"matches":[[".\x5c\x5csrc","src","ProviderContainer","C:\x5c\x5cp\x5c\x5csrc"]]}}"#
+    );
     assert_eq!(
-        parse_osc_sequence(payload),
+        parse_osc_sequence(&payload, TOKEN),
         Some(OscEvent::Report(ShellReport {
             line: r"cd .\s;".to_string(),
             cursor: 7,
@@ -100,7 +111,10 @@ fn test_parse_completion_report() {
             )],
         }))
     );
-    assert_eq!(parse_osc_sequence("6973;CMP;not json"), None);
+    assert_eq!(
+        parse_osc_sequence(&format!("6973;{TOKEN};CMP;not json"), TOKEN),
+        None
+    );
 }
 
 #[test]
@@ -128,4 +142,50 @@ fn test_report_ranges() {
         ..report
     };
     assert_eq!(away.replacement_range(), None);
+}
+
+#[test]
+fn test_message_without_the_session_token_is_ignored() {
+    // The protocol before this change, and what a printed file can contain.
+    assert_eq!(parse_osc_sequence("6973;RE", TOKEN), None);
+    assert_eq!(parse_osc_sequence("6973;RS;C:\\x5cp", TOKEN), None);
+    // A different token.
+    assert_eq!(
+        parse_osc_sequence("6973;ffffffffffffffffffffffffffffffff;RE", TOKEN),
+        None
+    );
+    // The token as a prefix of a longer one is not the token.
+    assert_eq!(
+        parse_osc_sequence(&format!("6973;{TOKEN}0;RE"), TOKEN),
+        None
+    );
+    // An empty session token never matches, not even an empty field.
+    assert_eq!(parse_osc_sequence("6973;;RE", ""), None);
+    assert_eq!(
+        parse_osc_sequence(&format!("6973;{TOKEN};RE"), TOKEN),
+        Some(OscEvent::ReadLineEnded)
+    );
+}
+
+#[test]
+fn test_session_tokens_are_fresh_hex() {
+    let a = new_session_token();
+    let b = new_session_token();
+    assert_eq!(a.len(), 32);
+    assert!(a
+        .chars()
+        .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+    assert_ne!(a, b);
+}
+
+#[test]
+fn test_script_carries_the_token_before_the_integration() {
+    let s = script(TOKEN);
+    let assignment = format!("$Global:__SP_Token = '{TOKEN}'");
+    assert!(
+        s.starts_with(&assignment),
+        "script starts with: {:?}",
+        &s[..80.min(s.len())]
+    );
+    assert!(s.contains("Set-PSReadLineKeyHandler"));
 }

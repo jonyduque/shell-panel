@@ -11,17 +11,24 @@ pub enum OscEvent {
 }
 
 /// Key sequence for Ctrl+Alt+Shift+F12. The integration script binds this chord to a PSReadLine
-/// handler that answers with `OSC 6973;CMP;<json>`.
+/// handler that answers with `OSC 6973;<token>;CMP;<json>`.
 pub const REPORT_REQUEST_KEY: &[u8] = b"\x1b[24;8~";
 
-/// Parses an OSC sequence payload according to the 6973 protocol.
+/// Parses an OSC 6973 payload sent by the integration script of this session.
 ///
-/// Supported sequences:
-/// - `6973;RS;<escaped_path>` -> `OscEvent::ReadLineStarted`
-/// - `6973;RE` -> `OscEvent::ReadLineEnded`
-/// - `6973;CMP;<escaped_json>` -> `OscEvent::Report`
-pub fn parse_osc_sequence(payload: &str) -> Option<OscEvent> {
-    let body = payload.strip_prefix("6973;")?;
+/// - `6973;<token>;RS;<escaped_path>` -> `OscEvent::ReadLineStarted`
+/// - `6973;<token>;RE` -> `OscEvent::ReadLineEnded`
+/// - `6973;<token>;CMP;<escaped_json>` -> `OscEvent::Report`
+///
+/// A payload without this session's `token` is not ours (a program printed it) and yields `None`.
+pub fn parse_osc_sequence(payload: &str, token: &str) -> Option<OscEvent> {
+    if token.is_empty() {
+        return None;
+    }
+    let body = payload
+        .strip_prefix("6973;")?
+        .strip_prefix(token)?
+        .strip_prefix(';')?;
     if body == "RE" {
         return Some(OscEvent::ReadLineEnded);
     }

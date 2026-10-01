@@ -8,6 +8,8 @@ pub const SESSION_ENV: &str = "SHELL_PANEL_SESSION";
 pub struct ConPtySession {
     pub pair: PtyPair,
     pub child: Box<dyn portable_pty::Child + Send + Sync>,
+    /// Secret tagging this session's shell messages.
+    pub token: String,
 }
 
 /// Options for [`ConPtySession::spawn`].
@@ -33,6 +35,7 @@ impl ConPtySession {
             pixel_height: 0,
         })?;
 
+        let token = crate::shell::integration::new_session_token();
         let mut cmd = CommandBuilder::new(shell_type.executable_name());
         // portable-pty starts the child in the home directory unless a cwd is given.
         cmd.cwd(std::env::current_dir()?);
@@ -44,7 +47,7 @@ impl ConPtySession {
         }
         cmd.arg("-NoExit");
         cmd.arg("-EncodedCommand");
-        cmd.arg(crate::shell::integration::encoded_command());
+        cmd.arg(crate::shell::integration::encoded_command(&token));
 
         let child = pair.slave.spawn_command(cmd).with_context(|| {
             format!(
@@ -53,7 +56,7 @@ impl ConPtySession {
             )
         })?;
 
-        Ok(Self { pair, child })
+        Ok(Self { pair, child, token })
     }
 
     /// Resizes the PTY terminal window dimensions.

@@ -111,7 +111,7 @@ impl App {
         let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
         let shell_type = detect_shell(self.override_shell.as_deref());
 
-        let ConPtySession { pair, child } = ConPtySession::spawn(
+        let ConPtySession { pair, child, token } = ConPtySession::spawn(
             shell_type,
             cols,
             rows,
@@ -151,7 +151,7 @@ impl App {
         });
 
         let mut term = HeadlessTerminal::new(cols, rows);
-        let mut command_state = CommandState::default();
+        let mut command_state = CommandState::new(token);
         let mut dropdown = Dropdown {
             state: SuggestionState::new(self.config.max_suggestions),
             layout: None,

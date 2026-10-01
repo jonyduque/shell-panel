@@ -9,7 +9,7 @@ Inspired by [`@microsoft/inshellisense`](https://github.com/microsoft/inshellise
 
 shell-panel starts PowerShell inside a ConPTY pseudo-terminal and sits between it and your terminal.
 
-- A small integration script is embedded in the binary and passed to PowerShell with `-EncodedCommand`: nothing is written to disk and your execution policy is not touched. It wraps `PSConsoleHostReadLine` to tell shell-panel when PSReadLine is reading a line (and in which directory), and binds **Ctrl+Alt+Shift+F12** to a handler that reports the current line, the cursor and PowerShell's own completions for it.
+- A small integration script is embedded in the binary and passed to PowerShell with `-EncodedCommand`: nothing is written to disk and your execution policy is not touched. It wraps `PSConsoleHostReadLine` to tell shell-panel when PSReadLine is reading a line (and in which directory), and binds **Ctrl+Alt+Shift+F12** to a handler that reports the current line, the cursor and PowerShell's own completions for it. Every message the script sends carries a secret generated for the session, so text printed by a program cannot pose as a report.
 - When you press **Tab**, shell-panel sends that chord, receives the report from *your* session — so variables, functions, registered argument completers and the current location are all known — merges it with its other sources and draws a dropdown over the terminal. A headless VT100 emulator mirrors the screen so the rows under the dropdown are restored exactly, colors included.
 - If PSReadLine is not reading (a program is running, `Read-Host`, a full-screen app) or no report arrives within 3 seconds, Tab goes to PowerShell unchanged.
 
@@ -124,7 +124,7 @@ Most tests are pure. The PTY and end-to-end tests start real PowerShell sessions
 - Windows and PowerShell only.
 - Under execution policy `Restricted`, PSReadLine cannot load; shell-panel then gets no ReadLine markers and no completion report, and behaves as a plain pass-through terminal. shell-panel deliberately does not pass `-ExecutionPolicy Bypass`.
 - PowerShell's completions are computed on the shell's thread, like native Tab: a slow completer delays the dropdown (after 3 seconds Tab falls back to PowerShell).
-- The report travels through the terminal stream as an OSC sequence. Shell messages longer than 1 MiB, or containing raw control bytes, are treated as ordinary output. This is verified on Windows 11; very old Windows 10 console hosts may truncate long sequences.
+- The report travels through the terminal stream as an OSC sequence. Shell messages longer than 1 MiB, or containing raw control bytes, are treated as ordinary output. Messages without the session's secret are ignored. This is verified on Windows 11; very old Windows 10 console hosts may truncate long sequences.
 - A Tab character inside pasted text triggers completion instead of being inserted.
 - The child shell inherits `SHELL_PANEL_SESSION=1`, so shell-panel refuses to start in a new window opened from inside a session (for example with `Start-Process`) until that variable is removed: `$env:SHELL_PANEL_SESSION = $null`.
 

@@ -116,6 +116,22 @@ impl Terminal {
         }
         None
     }
+    /// Keeps this test session out of the user's real PSReadLine history: nothing typed here is
+    /// saved, and no inline prediction from the real history is drawn on the line under test.
+    /// Call it once the first prompt is on screen.
+    pub fn quiet_session(&mut self) {
+        // PredictionSource does not exist in PSReadLine 2.0 (Windows PowerShell 5.1): try/catch.
+        // The marker is built by concatenation so the echoed command cannot satisfy the wait.
+        self.send(
+            b"Set-PSReadLineOption -HistorySaveStyle SaveNothing; \
+try { Set-PSReadLineOption -PredictionSource None } catch {}; 'QUIET' + 'READY'\r",
+        );
+        assert!(
+            self.wait_for_text("QUIETREADY", Duration::from_secs(15)),
+            "quiet_session did not finish: {}",
+            self.screen()
+        );
+    }
 }
 
 impl Drop for Terminal {

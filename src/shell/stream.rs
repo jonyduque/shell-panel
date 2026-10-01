@@ -96,7 +96,7 @@ fn scan_messages(
 
         let payload_end = i + OSC_PREFIX.len() + offset;
         if let Ok(payload) = std::str::from_utf8(&data[i + 2..payload_end]) {
-            if let Some(event) = parse_osc_sequence(payload) {
+            if let Some(event) = parse_osc_sequence(payload, &command_state.token) {
                 command_state.handle_osc(event);
             }
         }

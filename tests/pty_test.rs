@@ -52,7 +52,7 @@ fn test_conpty_session_spawn_and_resize() {
 
 #[tokio::test]
 async fn test_watch_exit_reports_code_although_pty_output_stays_open() {
-    let ConPtySession { pair, child } = ConPtySession::spawn(
+    let ConPtySession { pair, child, .. } = ConPtySession::spawn(
         detect_shell(None),
         80,
         24,

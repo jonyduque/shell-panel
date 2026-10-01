@@ -6,8 +6,10 @@ use common::{Terminal, COLS, ROWS};
 use portable_pty::CommandBuilder;
 use shell_panel::pty::conpty::{ConPtySession, SpawnOptions};
 use shell_panel::pty::shell::detect_shell;
-use shell_panel::shell::integration::{base64_encode, encoded_command, SCRIPT};
+use shell_panel::shell::integration::{base64_encode, encoded_command, script, SCRIPT};
 use shell_panel::shell::osc::{parse_osc_sequence, OscEvent, REPORT_REQUEST_KEY};
+
+const TOKEN: &str = "0123456789abcdef0123456789abcdef";
 
 #[test]
 fn test_base64_encode_vectors() {
@@ -22,14 +24,14 @@ fn test_base64_encode_vectors() {
 fn test_encoded_command_fits_the_windows_command_line() {
     assert!(SCRIPT.contains("PSConsoleHostReadLine"));
     assert!(
-        encoded_command().len() < 30_000,
+        encoded_command(TOKEN).len() < 30_000,
         "CreateProcess limit is 32767 characters"
     );
 }
 
 /// A real shell that runs `prelude` before the integration script, the way a profile would.
 fn shell_with_prelude(prelude: &str) -> Terminal {
-    let script = format!("{prelude}\n{SCRIPT}");
+    let script = format!("{prelude}\n{}", script(TOKEN));
     let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
     let mut cmd = CommandBuilder::new(detect_shell(None).executable_name());
     cmd.arg("-NoLogo");
@@ -44,7 +46,10 @@ fn shell_with_prelude(prelude: &str) -> Terminal {
 /// Asks the session for both prediction options and checks the view it answers with.
 fn assert_prediction_view(term: &mut Terminal, expected_view: &str) {
     assert!(
-        term.wait_for_raw(b"\x1b]6973;RS;", Duration::from_secs(40)),
+        term.wait_for_raw(
+            format!("\x1b]6973;{TOKEN};RS;").as_bytes(),
+            Duration::from_secs(40)
+        ),
         "no ReadLine marker"
     );
     let option = "(Get-PSReadLineOption)";
@@ -83,16 +88,17 @@ fn test_an_inline_prediction_session_is_left_alone() {
     assert_prediction_view(&mut term, "InlineView");
 }
 
-fn last_report(raw: &[u8]) -> Option<OscEvent> {
-    let marker = b"\x1b]6973;CMP;";
+fn last_report(raw: &[u8], token: &str) -> Option<OscEvent> {
+    let marker = format!("\x1b]6973;{token};CMP;");
+    let marker = marker.as_bytes();
     let start = raw.windows(marker.len()).rposition(|w| w == marker)?;
     let end = start + raw[start..].iter().position(|&b| b == 0x07)?;
-    parse_osc_sequence(std::str::from_utf8(&raw[start + 2..end]).ok()?)
+    parse_osc_sequence(std::str::from_utf8(&raw[start + 2..end]).ok()?, token)
 }
 
 #[test]
 fn test_session_reports_readline_state_line_cursor_and_completions() {
-    let ConPtySession { pair, child } = ConPtySession::spawn(
+    let ConPtySession { pair, child, token } = ConPtySession::spawn(
         detect_shell(None),
         COLS,
         ROWS,
@@ -102,23 +108,30 @@ fn test_session_reports_readline_state_line_cursor_and_completions() {
     let mut term = Terminal::attach(pair.master, child);
 
     assert!(
-        term.wait_for_raw(b"\x1b]6973;RS;", Duration::from_secs(40)),
+        term.wait_for_raw(
+            format!("\x1b]6973;{token};RS;").as_bytes(),
+            Duration::from_secs(40)
+        ),
         "no ReadLine marker"
     );
 
     // A variable that exists only in this session proves completion runs inside it.
     term.send(b"$sp_report_zz = 1\r");
-    assert!(term.wait_for_raw(b"\x1b]6973;RE\x07", Duration::from_secs(15)));
+    assert!(term.wait_for_raw(
+        format!("\x1b]6973;{token};RE\x07").as_bytes(),
+        Duration::from_secs(15)
+    ));
 
     term.send("echo 'ação' > $sp_report_".as_bytes());
     assert!(term.wait_for_text("$sp_report_", Duration::from_secs(15)));
     term.send(REPORT_REQUEST_KEY);
     assert!(
-        term.wait_until(Duration::from_secs(20), |t| last_report(&t.raw).is_some()),
+        term.wait_until(Duration::from_secs(20), |t| last_report(&t.raw, &token)
+            .is_some()),
         "no report"
     );
 
-    let Some(OscEvent::Report(report)) = last_report(&term.raw) else {
+    let Some(OscEvent::Report(report)) = last_report(&term.raw, &token) else {
         unreachable!()
     };
     assert_eq!(report.line, "echo 'ação' > $sp_report_");

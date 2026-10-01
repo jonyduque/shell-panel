@@ -4,6 +4,8 @@ use crate::shell::report::ShellReport;
 /// What shell-panel knows about the shell from its integration messages.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct CommandState {
+    /// Secret of this session; messages without it are ignored (see `new_session_token`).
+    pub token: String,
     /// Current filesystem location of the shell.
     pub cwd: String,
     /// True while PSReadLine is reading a line: the only time the report request is answered.
@@ -13,6 +15,13 @@ pub struct CommandState {
 }
 
 impl CommandState {
+    pub fn new(token: impl Into<String>) -> Self {
+        Self {
+            token: token.into(),
+            ..Self::default()
+        }
+    }
+
     pub fn handle_osc(&mut self, event: OscEvent) {
         match event {
             OscEvent::ReadLineStarted { cwd } => {
