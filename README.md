@@ -40,6 +40,20 @@ Sources are queried concurrently and merged: highest priority first, one entry p
 - PowerShell 7 (`pwsh.exe`) or Windows PowerShell 5.1 (`powershell.exe`), with PSReadLine 2.0 or later (bundled with both).
 - A recent stable Rust toolchain to build.
 
+## Install
+
+```powershell
+irm https://github.com/jonyduque/shell-panel/releases/latest/download/install.ps1 | iex
+```
+
+The installer picks the x64 or ARM64 build, checks it against the release's `SHA256SUMS.txt`, installs `shell-panel.exe` into `%LOCALAPPDATA%\Programs\shell-panel`, adds that folder to your user `PATH` and adds a **PowerShell (shell-panel)** profile to Windows Terminal. Run it again to update. A specific version: download `install.ps1` from the release and run `.\install.ps1 -Version 0.2.0`.
+
+To uninstall (your `~\.config\shell-panel.toml` and custom specs are kept unless you add `-Purge`):
+
+```powershell
+irm https://github.com/jonyduque/shell-panel/releases/latest/download/uninstall.ps1 | iex
+```
+
 ## Build and run
 
 ```powershell
@@ -120,6 +134,15 @@ cargo test
 ```
 
 Most tests are pure. The PTY and end-to-end tests start real PowerShell sessions (with `-NoProfile`) through ConPTY — the end-to-end ones run the actual `shell-panel` binary — and need `pwsh.exe` or `powershell.exe` on PATH.
+
+`scripts/test-installer.ps1` tests `install.ps1` and `uninstall.ps1` end to end against `target\release` (run `cargo build --release` first), in temporary folders; add `-Shell powershell` to run them under Windows PowerShell 5.1. It restores your `PATH` afterwards.
+
+### Releasing
+
+1. Set `version` in `Cargo.toml` (and run `cargo build` so `Cargo.lock` follows), commit.
+2. `git tag v<version>` and `git push origin v<version>`.
+
+The Release workflow checks that the tag matches `Cargo.toml`, runs the full gate, builds x64 and ARM64, tests the installer on the x64 build and publishes the release with both zips, `SHA256SUMS.txt`, `install.ps1` and `uninstall.ps1`. A tag with a `-` (e.g. `v0.2.0-rc.1`) is published as a pre-release.
 
 ## Known limitations
 
