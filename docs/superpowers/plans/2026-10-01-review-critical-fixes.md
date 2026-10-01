@@ -967,3 +967,18 @@ These are not part of this plan. They will get their own plan once Tasks 1–4 a
 | I6 | Tooltips/descriptions drawn raw (escape sequences reach the terminal) | strip C0/C1/DEL from display text before rendering |
 | I7, I9–I19 | Documented rules without a test that can fail | one test per rule, each with a mutation proof |
 | M2 | e2e tests write to the user's real PSReadLine history | call `quiet_session()` in every existing e2e test |
+
+## Deferred from the execution of this plan
+
+Recorded by the per-task and final reviews of commits 6b30b91..56a18b8; none blocks merge. Carry them into the next plan.
+
+- `CommandState` derives `Debug`, so a future `{:?}` log would write the session token to the `--verbose` log; a redacting newtype would remove the risk.
+- `script(token)` does not check that the token is hex before embedding it in a PowerShell string (only caller passes 32 hex chars).
+- The token lives in `$Global:__SP_Token`: `Remove-Variable * -Scope Global` turns shell-panel into a silent pass-through (same fragility as `$Global:__SP_OriginalReadLine`). Embedding it as a literal in `__SP-Send` would close it.
+- "A Tab waits" is stored twice: `report_deadline` in the reactor and `awaiting_report` in `CommandState`. The `abandon_report` call sites are unpinned because the reactor guard makes them redundant; a comment should tie the two.
+- No e2e test applies a valid in-time report after a stale one (unit-tested only).
+- `request_report` uses `+= 1` while the rest of the counter saturates.
+- No test for a lone surrogate or for `\` and `;` mixed with non-ASCII in shell messages (checked by hand).
+- `remove_dir_when_released` is copied into three test files; it belongs in `tests/common`.
+- `cargo build` prints five `unexpected_cfgs`/dead-code warnings from `vendor/crossterm` (path dependencies are not lint-capped).
+- The Alt-code release path through the crossterm guard is untested (verified by reading).
