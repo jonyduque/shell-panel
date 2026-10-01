@@ -149,3 +149,18 @@ fn test_parse_invalid_colors() {
     assert_eq!(parse_color_fg("unknown_color"), None);
     assert_eq!(parse_color_bg("notacolor"), None);
 }
+
+#[test]
+fn test_non_ascii_hex_colours_are_ignored_without_panicking() {
+    for value in [
+        "#a\u{e9}",
+        "#\u{e9}a",
+        "#aaa\u{e9}a",
+        "#\u{1f600}",
+        "#ab\u{e9}",
+    ] {
+        assert_eq!(parse_color_fg(value), None, "{value:?}");
+        assert_eq!(parse_color_bg(value), None, "{value:?}");
+    }
+    assert!(parse_color_fg("#3b82f6").is_some());
+}

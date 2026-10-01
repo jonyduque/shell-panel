@@ -35,6 +35,9 @@ fn parse_color_spec(s: &str) -> Option<ColorSpec> {
 
     // Check hex RGB format (#RRGGBB or #RGB)
     if let Some(hex_part) = lower.strip_prefix('#') {
+        if !hex_part.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return None;
+        }
         if hex_part.len() == 6 {
             let r = u8::from_str_radix(&hex_part[0..2], 16).ok()?;
             let g = u8::from_str_radix(&hex_part[2..4], 16).ok()?;
