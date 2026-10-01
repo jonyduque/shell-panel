@@ -1,0 +1,62 @@
+{
+  "_comment": [
+    "Configuracao da revisao geral do shell-panel. Lida pelo workflow .claude/workflows/shell-panel-review.js",
+    "(passada inteira em args.config) e pela skill .claude/skills/shell-panel-review.",
+    "Agentes em worktree NAO enxergam arquivos nao versionados: por isso tudo aqui usa caminho absoluto."
+  ],
+
+  "root": "C:/Users/jonyd/Projetos/shell-panel",
+  "skillDir": "C:/Users/jonyd/Projetos/shell-panel/.claude/skills/shell-panel-review",
+  "baseCommit": "562e3e0",
+
+  "gate": "pwsh -NoProfile -File C:/Users/jonyd/Projetos/shell-panel/.claude/skills/shell-panel-review/scripts/verify.ps1",
+  "mutate": "pwsh -NoProfile -File C:/Users/jonyd/Projetos/shell-panel/.claude/skills/shell-panel-review/scripts/mutate.ps1 -Path <arquivo de producao> -Anchor '<trecho exato>' -Replacement '<mutacao que compila>' -TestCommand 'cargo test -q --test <arquivo> <filtro>'",
+  "consumers": "pwsh -NoProfile -File C:/Users/jonyd/Projetos/shell-panel/.claude/skills/shell-panel-review/scripts/find_consumers.ps1 -Symbol <nome> -OriginFile <arquivo>",
+
+  "partitions": [
+    {
+      "id": "core",
+      "summary": "Reator (App::run), CLI, carga de configuracao, main/panic hook/raw mode",
+      "files": ["src/core/app.rs", "src/core/config.rs", "src/core/mod.rs", "src/main.rs", "src/cli.rs", "src/lib.rs"],
+      "tests": ["tests/cli_test.rs", "tests/config_test.rs", "tests/tab_trigger_test.rs", "tests/e2e_binary_test.rs", "tests/common/mod.rs"]
+    },
+    {
+      "id": "shell-pty",
+      "summary": "Mensagens OSC 6973, parser de stream, relatorio CMP, script de integracao, ConPTY e escolha do shell",
+      "files": ["src/shell/command_state.rs", "src/shell/integration.rs", "src/shell/mod.rs", "src/shell/osc.rs", "src/shell/report.rs", "src/shell/stream.rs", "src/pty/conpty.rs", "src/pty/mod.rs", "src/pty/shell.rs", "assets/shellIntegration.ps1"],
+      "tests": ["tests/osc_test.rs", "tests/stream_test.rs", "tests/shell_report_test.rs", "tests/pty_test.rs", "tests/e2e_pty_test.rs"]
+    },
+    {
+      "id": "engine",
+      "summary": "Lexer, provedores (specs JSON, carapace, zoxide), merge e plano de substituicao",
+      "files": ["src/engine/aggregate.rs", "src/engine/lexer.rs", "src/engine/mod.rs", "src/engine/provider.rs", "src/engine/replacement.rs", "src/engine/providers/mod.rs", "src/engine/providers/json_spec.rs", "src/engine/providers/carapace.rs", "src/engine/providers/zoxide.rs", "assets/specs/git.json", "assets/specs/docker.json"],
+      "tests": ["tests/engine_test.rs", "tests/lexer_test.rs", "tests/aggregate_test.rs"]
+    },
+    {
+      "id": "io-ui-vt",
+      "summary": "Codificacao de teclas, filtro de entrada, raw mode, dropdown (renderer, tema, cores, estado), espelho VT",
+      "files": ["src/io/filter.rs", "src/io/key_event.rs", "src/io/mod.rs", "src/io/raw_mode.rs", "src/ui/color.rs", "src/ui/mod.rs", "src/ui/patch.rs", "src/ui/renderer.rs", "src/ui/suggestion_state.rs", "src/ui/theme.rs", "src/vt/emulator.rs", "src/vt/mod.rs"],
+      "tests": ["tests/io_test.rs", "tests/renderer_test.rs", "tests/theme_test.rs", "tests/color_test.rs", "tests/vt_test.rs"]
+    }
+  ],
+
+  "_lenses": [
+    "perPartition: uma instancia por particao. crossCutting: uma instancia sobre o repositorio todo,",
+    "porque a pergunta atravessa particoes (fronteira de confianca, codigo morto, docs).",
+    "worktree=true: o agente executa codigo (testes de rascunho, mutacao) e precisa de arvore propria."
+  ],
+  "lenses": [
+    { "id": "correcao",   "scope": "perPartition", "effort": "high",   "worktree": true },
+    { "id": "teste",      "scope": "perPartition", "effort": "high",   "worktree": true },
+    { "id": "seguranca",  "scope": "crossCutting", "effort": "high",   "worktree": true },
+    { "id": "interativo", "scope": "crossCutting", "effort": "high",   "worktree": true },
+    { "id": "manutencao", "scope": "crossCutting", "effort": "medium", "worktree": false },
+    { "id": "docs",       "scope": "crossCutting", "effort": "medium", "worktree": false }
+  ],
+
+  "maxRefutations": 30,
+
+  "projectRules": "- O terminal do usuario e o produto: stdout so recebe saida do shell e o dropdown; log so vai para arquivo com --verbose. Qualquer print solto corrompe a tela, e o usuario ve lixo sem erro.\n- Raw mode e cursor precisam voltar ao normal em toda saida (normal, erro, panic, shell morto). Terminal quebrado depois de sair e o pior defeito visivel.\n- Toda saida do PTY e nao confiavel: qualquer programa rodando no shell pode emitir OSC 6973. Texto vindo de relatorio CMP e escrito no PTY como se fosse digitado; CR/LF ou bytes de controle ali executam comando.\n- Indices do relatorio (cursor, replacementIndex, replacementLength) sao em unidades UTF-16 do .NET, nao bytes UTF-8 nem chars do Rust.\n- Tab sem relatorio em 3 s cai para o Tab do PowerShell; Tab nunca pode ser perdido nem duplicado.\n- O script de integracao nao pode imprimir nada sobre a linha que o usuario edita, nao pode mudar o que o prompt do usuario ve ($?, LASTEXITCODE) e nao usa -ExecutionPolicy Bypass (decisao: politica do usuario nao e tocada).\n- Ctrl+Alt+Shift+F12 e reservado para o shell-panel dentro da sessao.\n- Windows e PowerShell apenas; outros shells sao rejeitados com exit 2 de proposito.\n- Codigo formatado (cargo fmt) e clippy sem avisos com -D warnings.",
+
+  "decisionsNotToRelitigate": "- Completar dentro da sessao do usuario via PSReadLine (Tasks 7-9 do plano review-fixes) em vez de worker PowerShell separado: o worker ignorava cwd, variaveis e completers registrados. Nao proponha voltar ao worker.\n- Sem -ExecutionPolicy Bypass: sob Restricted o shell-panel vira pass-through, documentado em Known limitations.\n- Tab colado dispara completion: limitacao documentada, nao achado novo (a menos que cause perda de texto).\n- SHELL_PANEL_SESSION herdado: documentado.\n- Specs Fig embutidos como JSON (Task 17)."
+}

@@ -2,3 +2,6 @@
 
 # Personal Claude Code settings for this checkout
 /.claude/settings.local.json
+
+# Worktrees created by Claude Code agents
+/.claude/worktrees/
