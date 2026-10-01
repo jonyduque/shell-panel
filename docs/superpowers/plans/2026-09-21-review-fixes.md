@@ -1,5 +1,7 @@
 # Review Fixes Implementation Plan (v2)
 
+> **Status:** executed — Tasks 1–18 landed in commits e6ddf39 through 631e225; see the git history. Checkbox state below was not maintained during execution.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Fix every defect, architectural weakness, test gap and documentation gap found in the two project reviews of 2026-09-21, in the agreed order: quick critical fixes first, then the completion redesign, then the remaining items, cleanup and documentation.
