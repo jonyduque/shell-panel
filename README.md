@@ -47,6 +47,8 @@ cargo build --release
 .\target\release\shell-panel.exe
 ```
 
+`vendor/crossterm` is crossterm 0.28.1 with one fix for characters outside the BMP (see `vendor/crossterm/SHELL-PANEL-PATCH.md`).
+
 The shell starts in the directory you start shell-panel from. Starting shell-panel inside a shell-panel session is refused (`SHELL_PANEL_SESSION=1` is set inside a session; `shell-panel --check` tests for it).
 
 ## Keys

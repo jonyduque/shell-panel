@@ -28,3 +28,12 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+[workspace]
+# Vendored dependencies are not ours to format or lint.
+exclude = ["vendor"]
+
+[patch.crates-io]
+# crossterm 0.28.1 with one fix: surrogate halves are paired only from key-down records (see
+# vendor/crossterm/SHELL-PANEL-PATCH.md). Drop this once upstream releases the fix.
+crossterm = { path = "vendor/crossterm" }
