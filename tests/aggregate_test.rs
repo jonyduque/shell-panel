@@ -329,6 +329,43 @@ fn test_external_suggestion_mid_word_replaces_the_whole_word() {
 }
 
 #[test]
+fn test_external_suggestion_tail_stops_before_a_line_continuation() {
+    // `git checkout ma|` + backtick + newline + `  --quiet`: the continuation must survive.
+    let r = report(
+        "git checkout ma`
+  --quiet",
+        15,
+        13,
+        2,
+        vec![],
+    );
+    let spec = Suggestion::new("main", "main", None, 90);
+    assert_eq!(
+        plan_replacement(&r, &spec),
+        ReplacementAction {
+            backspace_count: 0,
+            delete_count: 0,
+            insert_text: "in ".into()
+        }
+    );
+}
+
+#[test]
+fn test_external_suggestion_tail_stops_before_a_redirection() {
+    // `git log --onel|xx>log.txt`: only `xx` is part of the word, the redirection survives.
+    let spec = Suggestion::new("--oneline", "--oneline", None, 90);
+    let r = report("git log --onelxx>log.txt", 14, 8, 6, vec![]);
+    assert_eq!(
+        plan_replacement(&r, &spec),
+        ReplacementAction {
+            backspace_count: 6,
+            delete_count: 2,
+            insert_text: "--oneline ".into()
+        }
+    );
+}
+
+#[test]
 fn test_external_suggestion_tail_stops_before_a_closing_bracket() {
     // `(cd pro|jects)`: the closing parenthesis must survive.
     let r = report("(cd projects)", 7, 4, 3, vec![]);

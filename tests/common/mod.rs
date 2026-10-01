@@ -125,15 +125,20 @@ impl Terminal {
         }
     }
 
-    /// Keeps this test session out of the user's real PSReadLine history: nothing typed here is
-    /// saved, and no inline prediction from the real history is drawn on the line under test.
-    /// Call it once the first prompt is on screen.
+    /// Keeps this test session out of the user's real PSReadLine history: nothing typed after
+    /// this call is saved, and no inline prediction from the real history is drawn on the line
+    /// under test. Call it once the first prompt is on screen.
+    ///
+    /// PSReadLine saves the accepted line before `SaveNothing` takes effect, so the command line
+    /// sent here would be written once per test. It carries an `apikey` comment: PSReadLine 2.2+
+    /// (PowerShell 7) keeps lines matching its sensitive-data pattern in memory only. Windows
+    /// PowerShell 5.1 (PSReadLine 2.0) has no such rule, so there this first line is still saved.
     pub fn quiet_session(&mut self) {
         // PredictionSource does not exist in PSReadLine 2.0 (Windows PowerShell 5.1): try/catch.
         // The marker is built by concatenation so the echoed command cannot satisfy the wait.
         self.send(
             b"Set-PSReadLineOption -HistorySaveStyle SaveNothing; \
-try { Set-PSReadLineOption -PredictionSource None } catch {}; 'QUIET' + 'READY'\r",
+try { Set-PSReadLineOption -PredictionSource None } catch {}; 'QUIET' + 'READY' # apikey: keeps this line out of the saved history (PSReadLine 2.2+ sensitive-line rule)\r",
         );
         assert!(
             self.wait_for_text("QUIETREADY", Duration::from_secs(15)),

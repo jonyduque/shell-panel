@@ -304,6 +304,23 @@ fn test_token_tail_stops_at_whitespace_and_separators() {
     assert_eq!(token_tail("ck}"), "ck");
     assert_eq!(token_tail("k\""), "k");
     assert_eq!(token_tail("k'"), "k");
+    assert_eq!(token_tail("ne>log.txt"), "ne");
+    assert_eq!(token_tail("ne<in.txt"), "ne");
+    assert_eq!(token_tail("ne,x"), "ne");
+    assert_eq!(
+        token_tail(
+            "in`
+  --quiet"
+        ),
+        "in"
+    );
+    assert_eq!(
+        token_tail(
+            "`
+  --quiet"
+        ),
+        ""
+    );
 }
 
 #[test]
