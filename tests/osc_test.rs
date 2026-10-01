@@ -63,6 +63,7 @@ fn test_command_state_follows_readline_markers() {
         replacement_length: 3,
         matches: vec![],
     };
+    state.request_report();
     state.handle_osc(OscEvent::Report(report.clone()));
     assert_eq!(state.report, Some(report));
 
@@ -188,4 +189,76 @@ fn test_script_carries_the_token_before_the_integration() {
         &s[..80.min(s.len())]
     );
     assert!(s.contains("Set-PSReadLineKeyHandler"));
+}
+
+fn report_of(line: &str) -> ShellReport {
+    ShellReport {
+        line: line.into(),
+        cursor: line.encode_utf16().count(),
+        replacement_index: 0,
+        replacement_length: 0,
+        matches: vec![],
+    }
+}
+
+fn reading() -> CommandState {
+    let mut state = CommandState::new(TOKEN);
+    state.handle_osc(OscEvent::ReadLineStarted { cwd: None });
+    state
+}
+
+#[test]
+fn test_unrequested_report_is_dropped() {
+    let mut state = reading();
+    state.handle_osc(OscEvent::Report(report_of("x")));
+    assert_eq!(state.report, None);
+}
+
+#[test]
+fn test_only_the_answer_to_the_last_request_is_kept() {
+    let mut state = reading();
+    state.request_report(); // Tab 1
+    state.abandon_report(); // a key, or the 3 s timeout
+    state.request_report(); // Tab 2
+    state.handle_osc(OscEvent::Report(report_of("old")));
+    assert_eq!(
+        state.report, None,
+        "the answer to Tab 1 was taken for Tab 2"
+    );
+    state.handle_osc(OscEvent::Report(report_of("new")));
+    assert_eq!(state.report.take().map(|r| r.line), Some("new".to_string()));
+}
+
+#[test]
+fn test_late_answer_after_abandon_is_dropped() {
+    let mut state = reading();
+    state.request_report();
+    state.abandon_report();
+    state.handle_osc(OscEvent::Report(report_of("late")));
+    assert_eq!(state.report, None);
+}
+
+#[test]
+fn test_answer_is_kept_once() {
+    let mut state = reading();
+    state.request_report();
+    state.handle_osc(OscEvent::Report(report_of("a")));
+    assert!(state.report.take().is_some());
+    // A duplicate (or forged) second report finds no Tab waiting.
+    state.handle_osc(OscEvent::Report(report_of("b")));
+    assert_eq!(state.report, None);
+}
+
+#[test]
+fn test_new_line_forgets_requests_that_were_never_answered() {
+    let mut state = reading();
+    state.request_report(); // chord swallowed: no report will ever come
+    state.abandon_report();
+    state.handle_osc(OscEvent::ReadLineStarted { cwd: None });
+    state.request_report();
+    state.handle_osc(OscEvent::Report(report_of("fresh")));
+    assert_eq!(
+        state.report.take().map(|r| r.line),
+        Some("fresh".to_string())
+    );
 }

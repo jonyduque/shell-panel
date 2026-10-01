@@ -10,8 +10,12 @@ pub struct CommandState {
     pub cwd: String,
     /// True while PSReadLine is reading a line: the only time the report request is answered.
     pub reading_line: bool,
-    /// Latest completion report, taken by the reactor loop.
+    /// The report answering the Tab that waits now, taken by the reactor loop.
     pub report: Option<ShellReport>,
+    /// Report requests written to the shell whose report has not arrived yet.
+    outstanding_reports: u32,
+    /// True while a Tab waits for the answer to the latest request.
+    awaiting_report: bool,
 }
 
 impl CommandState {
@@ -22,17 +26,39 @@ impl CommandState {
         }
     }
 
+    /// A Tab wrote a report request to the shell and now waits for its answer.
+    pub fn request_report(&mut self) {
+        self.outstanding_reports += 1;
+        self.awaiting_report = true;
+    }
+
+    /// The waiting Tab gave up (timeout, or another key): its answer, when it lands, is stale.
+    pub fn abandon_report(&mut self) {
+        self.awaiting_report = false;
+    }
+
     pub fn handle_osc(&mut self, event: OscEvent) {
         match event {
             OscEvent::ReadLineStarted { cwd } => {
                 self.reading_line = true;
                 self.report = None;
+                // Every report of the previous line came before this marker: a request still
+                // counted was never answered and never will be.
+                self.outstanding_reports = 0;
                 if let Some(cwd) = cwd {
                     self.cwd = cwd;
                 }
             }
             OscEvent::ReadLineEnded => self.reading_line = false,
-            OscEvent::Report(report) => self.report = Some(report),
+            OscEvent::Report(report) => {
+                // PSReadLine answers requests in order, so only the report that settles the last
+                // one describes the line as it is now.
+                self.outstanding_reports = self.outstanding_reports.saturating_sub(1);
+                if self.outstanding_reports == 0 && self.awaiting_report {
+                    self.awaiting_report = false;
+                    self.report = Some(report);
+                }
+            }
         }
     }
 }

@@ -209,7 +209,7 @@ impl App {
                     }
 
                     if let Some(report) = command_state.report.take() {
-                        // Only the answer to the latest Tab is wanted.
+                        // `CommandState` keeps a report only when it answers the Tab that waits now.
                         if report_deadline.take().is_some() {
                             debug!(matches = report.matches.len(), "shell report arrived");
                             let engine = engine.clone();
@@ -242,6 +242,7 @@ impl App {
                     debug!("shell report timed out");
                     report_deadline = None;
                     tab_pending = false;
+                    command_state.abandon_report();
                     write_to_pty(&mut pty_writer, b"\t");
                 }
 
@@ -265,6 +266,7 @@ impl App {
                         Event::Key(key_event) if key_event.kind != KeyEventKind::Release => {
                             generation += 1;
                             report_deadline = None;
+                            command_state.abandon_report();
                             // This key invalidates the outstanding report, so hand the shell the
                             // Tab it never got before the key that follows it.
                             write_to_pty(&mut pty_writer, withheld_tab_bytes(tab_pending, key_event.code));
@@ -272,7 +274,7 @@ impl App {
                                 &key_event,
                                 &mut dropdown,
                                 &term,
-                                &command_state,
+                                &mut command_state,
                                 &mut pty_writer,
                                 &mut stdout,
                                 &mut report_deadline,
@@ -306,7 +308,7 @@ impl App {
         key_event: &KeyEvent,
         dropdown: &mut Dropdown,
         term: &HeadlessTerminal,
-        command_state: &CommandState,
+        command_state: &mut CommandState,
         pty_writer: &mut W,
         stdout: &mut O,
         report_deadline: &mut Option<Instant>,
@@ -347,6 +349,7 @@ impl App {
             // Only PSReadLine answers the request, and it is reading right now.
             debug!("requesting shell report");
             write_to_pty(pty_writer, REPORT_REQUEST_KEY);
+            command_state.request_report();
             *report_deadline = Some(Instant::now() + REPORT_TIMEOUT);
         } else {
             write_to_pty(pty_writer, &encode_key_event(key_event));
