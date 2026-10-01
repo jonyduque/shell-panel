@@ -1,5 +1,6 @@
 mod common;
 
+use std::path::Path;
 use std::time::Duration;
 
 use common::{Terminal, COLS, ROWS};
@@ -143,6 +144,87 @@ fn test_session_reports_readline_state_line_cursor_and_completions() {
     assert_eq!(&report.line[start..end], "$sp_report_");
     assert!(
         report.matches.iter().any(|m| m.0 == "$sp_report_zz"),
+        "matches: {:?}",
+        report.matches
+    );
+}
+
+/// The integration script in a real shell started in `dir`, with the test token.
+fn shell_in(dir: &Path) -> Terminal {
+    let utf16: Vec<u8> = script(TOKEN)
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    let mut cmd = CommandBuilder::new(detect_shell(None).executable_name());
+    for arg in ["-NoLogo", "-NoProfile", "-NoExit", "-EncodedCommand"] {
+        cmd.arg(arg);
+    }
+    cmd.arg(base64_encode(&utf16));
+    cmd.cwd(dir);
+    cmd.env_remove("SHELL_PANEL_SESSION");
+    Terminal::spawn(cmd)
+}
+
+fn last_cwd(raw: &[u8]) -> Option<String> {
+    let marker = format!("\x1b]6973;{TOKEN};RS;");
+    let marker = marker.as_bytes();
+    let start = raw.windows(marker.len()).rposition(|w| w == marker)?;
+    let end = start + raw[start..].iter().position(|&b| b == 0x07)?;
+    match parse_osc_sequence(std::str::from_utf8(&raw[start + 2..end]).ok()?, TOKEN)? {
+        OscEvent::ReadLineStarted { cwd } => cwd,
+        _ => None,
+    }
+}
+
+#[test]
+fn test_text_outside_the_console_code_page_survives_the_report() {
+    let dir = std::env::temp_dir().join(format!("sp_cp_日本😀_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut term = shell_in(&dir);
+    assert!(
+        term.wait_until(Duration::from_secs(40), |t| last_cwd(&t.raw).is_some()),
+        "no ReadLine marker"
+    );
+    // The location is reported intact, not as `sp_cp_???_`.
+    assert_eq!(last_cwd(&term.raw).as_deref(), dir.to_str());
+
+    let line = "echo '日本😀ação' > $sp_cp_";
+    term.send(line.as_bytes());
+    assert!(term.wait_for_text("$sp_cp_", Duration::from_secs(15)));
+    term.send(REPORT_REQUEST_KEY);
+    assert!(
+        term.wait_until(Duration::from_secs(20), |t| last_report(&t.raw, TOKEN)
+            .is_some()),
+        "no report"
+    );
+    let Some(OscEvent::Report(report)) = last_report(&term.raw, TOKEN) else {
+        unreachable!()
+    };
+    assert_eq!(report.line, line);
+    // 😀 is two UTF-16 units: the cursor counts them both.
+    assert_eq!(report.cursor, line.encode_utf16().count());
+    assert_eq!(report.text_before_cursor(), Some(line));
+}
+
+#[test]
+fn test_completion_of_a_name_outside_the_code_page_is_not_a_wildcard() {
+    let dir = std::env::temp_dir().join(format!("sp_cpname_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("日本.txt"), b"x").unwrap();
+    let mut term = shell_in(&dir);
+    assert!(term.wait_until(Duration::from_secs(40), |t| last_cwd(&t.raw).is_some()));
+    term.send(b"Get-Item .\\");
+    assert!(term.wait_for_text("Get-Item .\\", Duration::from_secs(15)));
+    term.send(REPORT_REQUEST_KEY);
+    assert!(
+        term.wait_until(Duration::from_secs(20), |t| last_report(&t.raw, TOKEN)
+            .is_some())
+    );
+    let Some(OscEvent::Report(report)) = last_report(&term.raw, TOKEN) else {
+        unreachable!()
+    };
+    assert!(
+        report.matches.iter().any(|m| m.0 == ".\\日本.txt"),
         "matches: {:?}",
         report.matches
     );

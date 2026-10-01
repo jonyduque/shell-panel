@@ -3,8 +3,12 @@
 # Messages to shell-panel: ESC ] 6973;<token>;<payload> BEL with payloads RS;<cwd>, RE and
 # CMP;<json>. Output of programs cannot know the token, so it cannot forge a message.
 
+# Everything outside printable ASCII, and `\` and `;`, goes as \xHH escapes of its UTF-8 bytes.
+# [Console]::Write encodes with the console code page (OEM 850, 437, ...), which turns every
+# character it cannot represent into '?'; ASCII is the same in all of them. A surrogate pair is
+# matched whole so it becomes one 4-byte UTF-8 sequence.
 function Global:__SP-Escape([string]$value) {
-    [regex]::Replace($value, '[\x00-\x1f\x7f\\;]', { param($match)
+    [regex]::Replace($value, '[\uD800-\uDBFF][\uDC00-\uDFFF]|[^\x20-\x3a\x3c-\x5b\x5d-\x7e]', { param($match)
         -join ([System.Text.Encoding]::UTF8.GetBytes($match.Value) | ForEach-Object { '\x{0:x2}' -f $_ })
     })
 }
