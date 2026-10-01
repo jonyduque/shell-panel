@@ -195,8 +195,15 @@ fn test_text_outside_the_console_code_page_survives_the_report() {
         term.wait_until(Duration::from_secs(40), |t| last_cwd(&t.raw).is_some()),
         "no ReadLine marker"
     );
-    // The location is reported intact, not as `sp_cp_???_`.
-    assert_eq!(last_cwd(&term.raw).as_deref(), dir.to_str());
+    // The location is reported intact, not as `sp_cp_???_`. Only the last component is compared:
+    // %TEMP% can be an 8.3 short path (`C:\Users\RUNNER~1\...` on CI runners), which PowerShell
+    // reports in its long form.
+    let cwd = last_cwd(&term.raw).expect("cwd");
+    let leaf = dir.file_name().unwrap().to_str().unwrap();
+    assert!(
+        cwd.ends_with(&format!("\\{leaf}")),
+        "cwd: {cwd:?}, expected to end with {leaf:?}"
+    );
 
     let line = "echo '日本😀ação' > $sp_cp_";
     term.send(line.as_bytes());

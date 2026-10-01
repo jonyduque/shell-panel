@@ -13,7 +13,7 @@ jobs:
     name: Gate (fmt, clippy, tests)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Toolchain components
         run: rustup component add rustfmt clippy
       - name: Gate
@@ -24,7 +24,7 @@ jobs:
     name: Installer
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build release binary
         run: cargo build --release --locked
       - name: Installer under PowerShell 7

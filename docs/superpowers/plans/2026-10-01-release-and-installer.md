@@ -18,7 +18,7 @@
 - Repository: `jonyduque/shell-panel`. Asset names: `shell-panel-<version>-<arch>.zip` with arch `x64` / `arm64`, plus `SHA256SUMS.txt` (`<lowercase sha256>  <file name>` per line).
 - Default install dir `%LOCALAPPDATA%\Programs\shell-panel`; fragment dir `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\shell-panel`; profile name `PowerShell (shell-panel)`; profile GUID `{b6f3a6a8-5d0e-4c55-9a5a-3e7c1f2d9b41}`.
 - The user `PATH` is edited in `HKCU\Environment` with `DoNotExpandEnvironmentNames`, preserving the value kind; never through `[Environment]::SetEnvironmentVariable('Path', ...)` (it turns `REG_EXPAND_SZ` into `REG_SZ`).
-- Workflows use only `actions/checkout@v4`, `actions/upload-artifact@v4`, `actions/download-artifact@v4` and the preinstalled `gh`. `permissions: contents: read` everywhere except the publish job (`contents: write`).
+- Workflows use only `actions/checkout`, `actions/upload-artifact`, `actions/download-artifact` and the preinstalled `gh`. `permissions: contents: read` everywhere except the publish job (`contents: write`).
 - Tests of the installer never touch the developer's real install dir, real fragment dir, or (after the run) their `PATH`.
 
 ## Review Focus

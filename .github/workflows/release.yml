@@ -14,7 +14,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Tag matches Cargo.toml
         id: version
         shell: pwsh
@@ -42,7 +42,7 @@ jobs:
           - target: aarch64-pc-windows-msvc
             arch: arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Add target
         run: rustup target add ${{ matrix.target }}
       - name: Build
@@ -55,7 +55,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item -LiteralPath "target/${{ matrix.target }}/release/shell-panel.exe", LICENSE, README.md -Destination $stage
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath "$name.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: zip-${{ matrix.arch }}
           path: shell-panel-*.zip
@@ -66,8 +66,8 @@ jobs:
     needs: [verify, build]
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: zip-x64
           path: dist
@@ -85,8 +85,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: zip-*
           path: dist
