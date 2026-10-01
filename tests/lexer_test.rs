@@ -228,3 +228,41 @@ fn test_call_operators_are_not_the_command() {
     );
     assert_eq!(texts("./build.ps1 -Fa"), vec!["./build.ps1", "-Fa"]);
 }
+
+#[test]
+fn test_line_breaks_separate_commands() {
+    assert_eq!(texts("if ($x) {\n  git sta"), vec!["git", "sta"]);
+    assert_eq!(texts("Get-Location\ngit sta"), vec!["git", "sta"]);
+    assert_eq!(texts("Get-Location\r\ngit sta"), vec!["git", "sta"]);
+    assert_eq!(texts("git status\n"), vec![""]);
+}
+
+#[test]
+fn test_single_ampersand_starts_a_command() {
+    assert_eq!(texts("git status & git ch"), vec!["git", "ch"]);
+    assert_eq!(texts("git status && git ch"), vec!["git", "ch"]);
+    assert_eq!(active_token_raw("git status & git ch"), "ch");
+}
+
+#[test]
+fn test_backtick_line_continuation_is_whitespace() {
+    assert_eq!(texts("git status `\n  --sh"), vec!["git", "status", "--sh"]);
+    assert_eq!(
+        texts("git status `\r\n  --sh"),
+        vec!["git", "status", "--sh"]
+    );
+}
+
+#[test]
+fn test_lexer_and_active_token_agree_on_separators() {
+    for input in [
+        "if ($x) {\n  git sta",
+        "Get-Location\r\ngit sta",
+        "git status & git ch",
+        "a | b; c && git ch",
+        "$r = (git sta",
+    ] {
+        let last = texts(input).pop().unwrap();
+        assert_eq!(active_token_raw(input), last, "input: {input:?}");
+    }
+}

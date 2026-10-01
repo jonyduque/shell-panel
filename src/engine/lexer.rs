@@ -34,9 +34,14 @@ struct RawToken {
     closed_quote: bool,
 }
 
+/// Characters that end a command outside quotes: pipeline, statement separators, call/background
+/// operator, sub-expression or script block, line breaks.
+pub const COMMAND_SEPARATORS: &[char] = &['|', ';', '&', '(', '{', '\n', '\r'];
+
 /// Lexes a PowerShell command line string into a list of `CommandToken`s.
 ///
-/// Delimiters: `|`, `;`, `&&`, `||` outside quotes split the input into segments.
+/// Separators (`COMMAND_SEPARATORS`: `|`, `;`, `&`, `(`, `{` and line breaks) outside quotes
+/// split the input into segments (`&&` and `||` are two separators).
 /// Only the active (last) command segment is lexed. If the input ends with a delimiter,
 /// an empty token is returned for completing the next command.
 pub fn lex_command_line(input: &str) -> Vec<CommandToken> {
@@ -61,18 +66,15 @@ pub fn lex_command_line(input: &str) -> Vec<CommandToken> {
     }
 
     let mut raw_tokens = lex_segment(last_segment);
-    // `& cmd` and `. cmd` invoke `cmd`: the operator is not the command.
-    if raw_tokens.len() > 1
-        && !raw_tokens[0].closed_quote
-        && (raw_tokens[0].text == "&" || raw_tokens[0].text == ".")
-    {
+    // `. cmd` invokes `cmd`: the operator is not the command (`&` is a separator).
+    if raw_tokens.len() > 1 && !raw_tokens[0].closed_quote && raw_tokens[0].text == "." {
         raw_tokens.remove(0);
     }
     if raw_tokens.is_empty() {
         return Vec::new();
     }
 
-    let ends_with_space = last_segment.ends_with(' ') || last_segment.ends_with('\t');
+    let ends_with_space = last_segment.ends_with([' ', '\t', '\n', '\r']);
     let mut tokens = Vec::with_capacity(raw_tokens.len() + if ends_with_space { 1 } else { 0 });
 
     let len = raw_tokens.len();
@@ -101,7 +103,8 @@ enum DelimQuoteState {
     DoubleQuote,
 }
 
-/// Splits input into segments separated by unquoted `|`, `;`, `&&`, `||`.
+/// Splits input into segments at each unquoted `COMMAND_SEPARATORS` character
+/// (`|`, `;`, `&`, `(`, `{`, `\n`, `\r`).
 fn split_segments(input: &str) -> Vec<&str> {
     let mut segments = Vec::new();
     let mut start = 0;
@@ -122,32 +125,16 @@ fn split_segments(input: &str) -> Vec<&str> {
                     state = DelimQuoteState::DoubleQuote;
                     i += 1;
                 } else if ch == '`' {
-                    // Backtick escapes next character outside quotes in PowerShell
-                    i += 2;
-                } else if ch == '|' {
-                    if i + 1 < len && chars[i + 1].1 == '|' {
-                        // || delimiter
-                        segments.push(&input[start..byte_pos]);
-                        i += 2;
-                        start = if i < len { chars[i].0 } else { input.len() };
+                    // Backtick escapes next character outside quotes in PowerShell; a backtick
+                    // before CRLF continues the line, so both break characters are skipped.
+                    i += if chars.get(i + 1).map(|c| c.1) == Some('\r')
+                        && chars.get(i + 2).map(|c| c.1) == Some('\n')
+                    {
+                        3
                     } else {
-                        // | delimiter
-                        segments.push(&input[start..byte_pos]);
-                        i += 1;
-                        start = if i < len { chars[i].0 } else { input.len() };
-                    }
-                } else if ch == ';' {
-                    // ; delimiter
-                    segments.push(&input[start..byte_pos]);
-                    i += 1;
-                    start = if i < len { chars[i].0 } else { input.len() };
-                } else if ch == '&' && i + 1 < len && chars[i + 1].1 == '&' {
-                    // && delimiter
-                    segments.push(&input[start..byte_pos]);
-                    i += 2;
-                    start = if i < len { chars[i].0 } else { input.len() };
-                } else if ch == '(' || ch == '{' {
-                    // A sub-expression or script block starts a new command.
+                        2
+                    };
+                } else if COMMAND_SEPARATORS.contains(&ch) {
                     segments.push(&input[start..byte_pos]);
                     i += 1;
                     start = if i < len { chars[i].0 } else { input.len() };
@@ -198,7 +185,7 @@ fn lex_segment(segment: &str) -> Vec<RawToken> {
 
     while i < len {
         // Skip leading whitespace between tokens
-        while i < len && (chars[i] == ' ' || chars[i] == '\t') {
+        while i < len && matches!(chars[i], ' ' | '\t' | '\n' | '\r') {
             i += 1;
         }
 
@@ -259,6 +246,16 @@ fn lex_segment(segment: &str) -> Vec<RawToken> {
                     token_active = true;
                     in_double = true;
                     i += 1;
+                } else if c == '`' && matches!(chars.get(i + 1), Some('\n') | Some('\r')) {
+                    // Line continuation: the backtick and the line break separate words.
+                    i += 1;
+                    if chars.get(i) == Some(&'\r') {
+                        i += 1;
+                    }
+                    if chars.get(i) == Some(&'\n') {
+                        i += 1;
+                    }
+                    break;
                 } else if c == '`' {
                     token_active = true;
                     if i + 1 < len {
@@ -268,7 +265,7 @@ fn lex_segment(segment: &str) -> Vec<RawToken> {
                         current.push('`');
                         i += 1;
                     }
-                } else if c == ' ' || c == '\t' {
+                } else if matches!(c, ' ' | '\t' | '\n' | '\r') {
                     // Unquoted whitespace ends the current word
                     break;
                 } else if c == '=' && is_flag_candidate {
@@ -318,11 +315,16 @@ pub fn active_token_raw(input: &str) -> &str {
         let next = i + c.len_utf8();
         match state {
             DelimQuoteState::Normal => match c {
-                ' ' | '\t' | '\n' | '\r' | '|' | ';' | '&' | '(' | '{' => start = next,
+                c if c == ' ' || c == '\t' || COMMAND_SEPARATORS.contains(&c) => start = next,
                 '\'' => state = DelimQuoteState::SingleQuote,
                 '"' => state = DelimQuoteState::DoubleQuote,
                 '`' => {
-                    chars.next();
+                    if chars.next().map(|(_, c)| c) == Some('\r') {
+                        let mut peek = chars.clone();
+                        if peek.next().map(|(_, c)| c) == Some('\n') {
+                            chars.next();
+                        }
+                    }
                 }
                 '=' if input[start..i].starts_with('-') => start = next,
                 _ => {}
