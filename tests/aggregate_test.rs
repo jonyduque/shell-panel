@@ -327,3 +327,18 @@ fn test_external_suggestion_mid_word_replaces_the_whole_word() {
         }
     );
 }
+
+#[test]
+fn test_external_suggestion_tail_stops_before_a_closing_bracket() {
+    // `(cd pro|jects)`: the closing parenthesis must survive.
+    let r = report("(cd projects)", 7, 4, 3, vec![]);
+    let spec = Suggestion::new("projects", "projects", None, 70);
+    assert_eq!(
+        plan_replacement(&r, &spec),
+        ReplacementAction {
+            backspace_count: 3,
+            delete_count: 5,
+            insert_text: "projects ".into()
+        }
+    );
+}

@@ -298,4 +298,8 @@ fn test_token_tail_stops_at_whitespace_and_separators() {
     assert_eq!(token_tail("etos|sort"), "etos");
     assert_eq!(token_tail(" next"), "");
     assert_eq!(token_tail(""), "");
+    assert_eq!(token_tail("jects)"), "jects");
+    assert_eq!(token_tail("ck}"), "ck");
+    assert_eq!(token_tail("k\""), "k");
+    assert_eq!(token_tail("k'"), "k");
 }

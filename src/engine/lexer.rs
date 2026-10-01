@@ -308,10 +308,16 @@ fn lex_segment(segment: &str) -> Vec<RawToken> {
 }
 
 /// The rest of the word that continues after the cursor: what has to be deleted forwards to
-/// replace the whole word.
+/// replace the whole word. It stops at whitespace, at a command separator and at a closing
+/// delimiter (`)`, `}`, `'`, `"`) so that what the user typed to close the word survives.
 pub fn token_tail(after: &str) -> &str {
     let end = after
-        .find(|c: char| c == ' ' || c == '\t' || COMMAND_SEPARATORS.contains(&c))
+        .find(|c: char| {
+            c == ' '
+                || c == '\t'
+                || matches!(c, ')' | '}' | '\'' | '"')
+                || COMMAND_SEPARATORS.contains(&c)
+        })
         .unwrap_or(after.len());
     &after[..end]
 }
