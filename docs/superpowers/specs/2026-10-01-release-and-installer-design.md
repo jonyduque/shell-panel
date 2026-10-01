@@ -22,7 +22,7 @@ pushing the tag.
 | Release trigger | Push of a tag `v*`. The tag must equal `v` + `version` of `Cargo.toml`. |
 | Targets | `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`. ARM64 is cross-compiled on the x64 runner and is not executed in CI. |
 | Windows Terminal | The installer always writes a Windows Terminal profile fragment. |
-| Build approach | Own workflows using only `actions/checkout` and the preinstalled `gh` CLI (approach A). cargo-dist and third-party upload actions were rejected: the installer has to be ours anyway (Terminal profile, checksum, PATH). |
+| Build approach | Own workflows using only the official `actions/checkout`, `actions/upload-artifact`, `actions/download-artifact` and the preinstalled `gh` CLI (approach A). cargo-dist and third-party upload actions were rejected: the installer has to be ours anyway (Terminal profile, checksum, PATH). |
 
 ## Workflows
 
@@ -52,6 +52,7 @@ Parameters:
 - `-Version <x.y.z>` — default: the latest release, from `https://api.github.com/repos/jonyduque/shell-panel/releases/latest` (`tag_name` without the `v`).
 - `-InstallDir <path>` — default `%LOCALAPPDATA%\Programs\shell-panel`.
 - `-ZipPath <path>`, `-ChecksumsPath <path>` — testing only: install from local files instead of downloading.
+- `-TerminalFragmentDir <path>` — testing only: where the fragment is written (default below), so tests never touch the real one.
 
 Steps:
 1. **Architecture**: `$env:PROCESSOR_ARCHITEW6432` if set, else `$env:PROCESSOR_ARCHITECTURE`; `AMD64` → `x64`, `ARM64` → `arm64`, anything else aborts with a message naming the architecture.
@@ -70,7 +71,7 @@ Output uses plain ASCII markers (`[*]`, `[OK]`, `[!]`) — a CP-850 console mang
 
 ## Uninstaller — `uninstall.ps1` (repository root)
 
-Parameters: `-InstallDir` (same default), `-Purge`. Removes `InstallDir`, its `PATH` entry (same comparison as the installer, same value-kind preservation, broadcast), and the fragment directory. With `-Purge` also removes `%USERPROFILE%\.config\shell-panel.toml` and `%USERPROFILE%\.config\shell-panel\`. Without it, says those were kept. Aborts with the same "close every session" message when the binary is in use. Idempotent: running it twice succeeds.
+Parameters: `-InstallDir` (same default), `-Purge`. Removes `InstallDir`, its `PATH` entry (same comparison as the installer, same value-kind preservation, broadcast), and the fragment directory. With `-Purge` also removes `%USERPROFILE%\.config\shell-panel.toml` and `%USERPROFILE%\.config\shell-panel\`. Without it, says those were kept. Aborts with the same "close every session" message when the binary is in use. Idempotent: running it twice succeeds. Refuses (throws, removes nothing) when `InstallDir` exists but holds no `shell-panel.exe`, since `-InstallDir` is user input. Also takes `-TerminalFragmentDir`.
 
 ## Testing
 
