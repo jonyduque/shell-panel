@@ -307,6 +307,15 @@ fn lex_segment(segment: &str) -> Vec<RawToken> {
     tokens
 }
 
+/// The rest of the word that continues after the cursor: what has to be deleted forwards to
+/// replace the whole word.
+pub fn token_tail(after: &str) -> &str {
+    let end = after
+        .find(|c: char| c == ' ' || c == '\t' || COMMAND_SEPARATORS.contains(&c))
+        .unwrap_or(after.len());
+    &after[..end]
+}
+
 /// Returns the raw source text (quotes and backtick escapes included) of the token that ends
 /// `input`, i.e. exactly what has to be erased to replace it at the prompt.
 pub fn active_token_raw(input: &str) -> &str {

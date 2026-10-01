@@ -1,4 +1,4 @@
-use shell_panel::engine::lexer::{active_token_raw, lex_command_line, CommandToken};
+use shell_panel::engine::lexer::{active_token_raw, lex_command_line, token_tail, CommandToken};
 
 #[test]
 fn test_lex_command_line_basic() {
@@ -289,4 +289,13 @@ fn test_active_token_raw_honours_line_continuation() {
     assert_eq!(active_token_raw("git `\nsta"), "sta");
     assert_eq!(active_token_raw("git status `\n"), "");
     assert_eq!(active_token_raw("git status `\r\n  --sh"), "--sh");
+}
+
+#[test]
+fn test_token_tail_stops_at_whitespace_and_separators() {
+    assert_eq!(token_tail("kout"), "kout");
+    assert_eq!(token_tail("kout --quiet"), "kout");
+    assert_eq!(token_tail("etos|sort"), "etos");
+    assert_eq!(token_tail(" next"), "");
+    assert_eq!(token_tail(""), "");
 }

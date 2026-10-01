@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 
-use crate::engine::lexer::{active_token_raw, lex_command_line};
+use crate::engine::lexer::{active_token_raw, lex_command_line, token_tail};
 use crate::engine::provider::{CompletionProvider, Suggestion, SuggestionKind};
 use crate::engine::providers::carapace::CarapaceProvider;
 use crate::engine::providers::json_spec::JsonSpecProvider;
 use crate::engine::providers::zoxide::ZoxideProvider;
-use crate::engine::replacement::{calculate_replacement, replace_range, ReplacementAction};
+use crate::engine::replacement::{replace_range, ReplacementAction};
 use crate::shell::report::ShellReport;
 
 /// Determines whether file suggestions should be shown next to `existing` suggestions.
@@ -174,7 +174,11 @@ pub fn plan_replacement(report: &ShellReport, suggestion: &Suggestion) -> Replac
             &report.line[cursor..end],
             &suggestion.name,
         ),
-        _ => calculate_replacement(active_token_raw(&report.line[..cursor]), &suggestion.name),
+        _ => replace_range(
+            active_token_raw(&report.line[..cursor]),
+            token_tail(&report.line[cursor..]),
+            &suggestion.name,
+        ),
     };
     if let Some(suffix) = shell_result_type(report, suggestion)
         .and_then(|result_type| missing_suffix(report, range, result_type))

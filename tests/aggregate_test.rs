@@ -297,3 +297,33 @@ async fn test_engine_merges_spec_with_shell_matches_off_thread() {
     let names: Vec<&str> = sugs.iter().map(|s| s.name.as_str()).collect();
     assert_eq!(names, vec!["deploy"]);
 }
+
+#[test]
+fn test_external_suggestion_mid_word_replaces_the_whole_word() {
+    // `git chec|kout`: the spec suggests `checkout`.
+    let r = report("git checkout", 8, 4, 8, vec![]);
+    let spec = Suggestion::new("checkout", "checkout", None, 90);
+    assert_eq!(
+        plan_replacement(&r, &spec),
+        ReplacementAction {
+            backspace_count: 4,
+            delete_count: 4,
+            insert_text: "checkout ".into()
+        }
+    );
+
+    // The tail ends at the next word: `git chec|kout --quiet`.
+    let r = report("git checkout --quiet", 8, 4, 8, vec![]);
+    assert_eq!(plan_replacement(&r, &spec).delete_count, 4);
+
+    // At the end of the word nothing after the cursor is deleted.
+    let r = report("git chec", 8, 4, 4, vec![]);
+    assert_eq!(
+        plan_replacement(&r, &spec),
+        ReplacementAction {
+            backspace_count: 0,
+            delete_count: 0,
+            insert_text: "kout ".into()
+        }
+    );
+}
