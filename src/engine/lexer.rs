@@ -322,6 +322,15 @@ pub fn token_tail(after: &str) -> &str {
     &after[..end]
 }
 
+/// The rest of a quoted word after the cursor, for a cursor inside an open `quote`: everything
+/// up to and including the first closing `quote`, or all of `after` when it is never closed.
+pub fn quoted_tail(after: &str, quote: char) -> &str {
+    match after.find(quote) {
+        Some(i) => &after[..i + quote.len_utf8()],
+        None => after,
+    }
+}
+
 /// Returns the raw source text (quotes and backtick escapes included) of the token that ends
 /// `input`, i.e. exactly what has to be erased to replace it at the prompt.
 pub fn active_token_raw(input: &str) -> &str {

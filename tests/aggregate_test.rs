@@ -342,3 +342,29 @@ fn test_external_suggestion_tail_stops_before_a_closing_bracket() {
         }
     );
 }
+
+#[test]
+fn test_external_suggestion_inside_quotes_deletes_the_closing_quote() {
+    let spec = Suggestion::new(r"'C:\My Documents'", r"C:\My Documents", None, 70);
+    // `cd 'My Do|cuments'`: the tail `cuments'` goes with the opening quote.
+    let r = report("cd 'My Documents'", 9, 3, 6, vec![]);
+    assert_eq!(
+        plan_replacement(&r, &spec),
+        ReplacementAction {
+            backspace_count: 6,
+            delete_count: 8,
+            insert_text: r"'C:\My Documents' ".into()
+        }
+    );
+    // The same inside double quotes.
+    let spec = Suggestion::new(r#""C:\My Documents""#, r"C:\My Documents", None, 70);
+    let r = report(r#"cd "My Documents""#, 9, 3, 6, vec![]);
+    assert_eq!(
+        plan_replacement(&r, &spec),
+        ReplacementAction {
+            backspace_count: 6,
+            delete_count: 8,
+            insert_text: r#""C:\My Documents" "#.into()
+        }
+    );
+}

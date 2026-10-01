@@ -1,4 +1,6 @@
-use shell_panel::engine::lexer::{active_token_raw, lex_command_line, token_tail, CommandToken};
+use shell_panel::engine::lexer::{
+    active_token_raw, lex_command_line, quoted_tail, token_tail, CommandToken,
+};
 
 #[test]
 fn test_lex_command_line_basic() {
@@ -302,4 +304,10 @@ fn test_token_tail_stops_at_whitespace_and_separators() {
     assert_eq!(token_tail("ck}"), "ck");
     assert_eq!(token_tail("k\""), "k");
     assert_eq!(token_tail("k'"), "k");
+}
+
+#[test]
+fn test_quoted_tail_runs_through_the_closing_quote() {
+    assert_eq!(quoted_tail("cuments' x", '\''), "cuments'");
+    assert_eq!(quoted_tail("abc", '"'), "abc");
 }

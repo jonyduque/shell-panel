@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::engine::lexer::{active_token_raw, lex_command_line, token_tail};
+use crate::engine::lexer::{active_token_raw, lex_command_line, quoted_tail, token_tail};
 use crate::engine::provider::{CompletionProvider, Suggestion, SuggestionKind};
 use crate::engine::providers::carapace::CarapaceProvider;
 use crate::engine::providers::json_spec::JsonSpecProvider;
@@ -174,11 +174,17 @@ pub fn plan_replacement(report: &ShellReport, suggestion: &Suggestion) -> Replac
             &report.line[cursor..end],
             &suggestion.name,
         ),
-        _ => replace_range(
-            active_token_raw(&report.line[..cursor]),
-            token_tail(&report.line[cursor..]),
-            &suggestion.name,
-        ),
+        _ => {
+            let before = active_token_raw(&report.line[..cursor]);
+            let after = &report.line[cursor..];
+            let tail = match before.chars().next() {
+                Some(quote @ ('\'' | '"')) if !before[1..].contains(quote) => {
+                    quoted_tail(after, quote)
+                }
+                _ => token_tail(after),
+            };
+            replace_range(before, tail, &suggestion.name)
+        }
     };
     if let Some(suffix) = shell_result_type(report, suggestion)
         .and_then(|result_type| missing_suffix(report, range, result_type))
