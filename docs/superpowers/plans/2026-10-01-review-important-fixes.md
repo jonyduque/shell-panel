@@ -655,3 +655,23 @@ Copy anchors from the files if whitespace differs. Read the timeout-branch lines
 
 - Push `main` after the final review. CI runs the whole suite; the next release tag no longer depends on a warm runner.
 - Still deferred: the Minor findings of the review and the items listed under "Deferred from the execution of this plan" in `2026-10-01-review-critical-fixes.md` and in the release-installer plan's final review.
+
+## Deferred from the execution of this plan
+
+Recorded by the task and final reviews of commits dfe4c5e..1129890; none blocks merge. Carry them into the next plan, together with the Minor findings of the 2026-10-01 review.
+
+- escaped "`>&" is treated as a redirection (not split)
+- no tests for & or ; inside quotes or `& escapes
+- cursor inside a quoted word containing a space leaves the rest of the quoted text
+- token_tail tests thin (no multibyte tail, no quoted-over-unquoted case)
+- carapace flag values with spaces/metacharacters (--name=a b) are not quoted (plan-mandated `-` exemption)
+- no test for merge dedupe of carapace 'My Dir/' vs PowerShell '.\My Dir\'; duplicated starts_with('-')
+- theme test checks specific sequences, not all control chars; bidi overrides/U+2028 not neutralised
+- open-quote detection uses contains(), so doubled '' or backtick-escaped quotes inside the word are misread as closed
+- unterminated quote deletes the rest of the line after the cursor (matches shell semantics)
+- I19 unselected iteration cannot see the .min(1) mutation (killed by the direct assert and the selected line)
+- temp dirs leak if I13/I16 asserts panic; I12 config case asserts only the exit code; osc_test `ahead` case has no own mutation run
+- I11 GOT- line match could be fooled by terminal wrap at a 70-char prompt; temp_dir never removed in e2e_binary_test
+- Terminal::drain has no overall deadline (bounded only by the child having exited)
+- open-quote detection only when the token starts with a quote (cd C:\'My |Do'); contains() misreads '' and escaped quotes
+- mid-line replacement before an existing space leaves a double space
