@@ -132,6 +132,19 @@ try { Set-PSReadLineOption -PredictionSource None } catch {}; 'QUIET' + 'READY'\
             self.screen()
         );
     }
+
+    /// Loads PowerShell's completion machinery before a timed Tab: the first completion in a
+    /// fresh session can take longer than shell-panel's 3 s report timeout on a cold machine.
+    pub fn warm_completion(&mut self) {
+        self.send(
+            b"$null = [System.Management.Automation.CommandCompletion]::CompleteInput('git ', 4, $null); 'WARM' + 'ED'\r",
+        );
+        assert!(
+            self.wait_for_text("WARMED", Duration::from_secs(30)),
+            "warm_completion did not finish: {}",
+            self.screen()
+        );
+    }
 }
 
 impl Drop for Terminal {
