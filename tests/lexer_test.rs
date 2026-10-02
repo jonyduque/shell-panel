@@ -360,11 +360,14 @@ fn test_escaped_redirection_does_not_protect_the_ampersand() {
 
 #[test]
 fn test_open_quote_follows_powershell_escapes() {
-    assert_eq!(open_quote("C:\'My Do"), Some('\''));
+    assert_eq!(open_quote(r"C:\'My Do"), Some('\''));
     assert_eq!(open_quote("'it''s"), Some('\''));
     assert_eq!(open_quote("'done'"), None);
     assert_eq!(open_quote("\"a`\"b"), Some('"'));
     assert_eq!(open_quote("plain"), None);
+    // Inside double quotes `""` is a literal quote: the string stays open.
+    assert_eq!(open_quote("\"a\"\""), Some('"'));
+    assert_eq!(open_quote("\"a\"\"b\""), None);
     // A backtick outside quotes escapes the quote that follows it.
     assert_eq!(open_quote("a`'b"), None);
     // Inside single quotes a backtick is literal.
@@ -376,4 +379,5 @@ fn test_quoted_tail_honours_escapes() {
     assert_eq!(quoted_tail("s x'", '\''), "s x'");
     assert_eq!(quoted_tail("b`\"c\" d", '"'), "b`\"c\"");
     assert_eq!(quoted_tail("a''b' x", '\''), "a''b'");
+    assert_eq!(quoted_tail("\"\"b\" x", '"'), "\"\"b\"");
 }

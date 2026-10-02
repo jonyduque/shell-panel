@@ -494,12 +494,45 @@ fn test_carapace_flag_value_with_a_space_is_quoted_after_the_equals() {
     assert!(sugs.iter().all(|s| s.kind == SuggestionKind::Option));
 }
 
-/// Writes a `.cmd` helper that sleeps about five seconds into `dir`, which belongs to one test
-/// (the tests run in parallel and must not share the file).
+/// Writes a `.cmd` helper into `dir` (which belongs to one test; the tests run in parallel) that
+/// first drops a `ran.txt` marker and then sleeps about five seconds.
 fn slow_helper(dir: &common::TempDir) -> std::path::PathBuf {
     let path = dir.join("slow.cmd");
-    std::fs::write(&path, "@ping -n 6 127.0.0.1 >nul\r\n").unwrap();
+    let marker = dir.join("ran.txt");
+    std::fs::write(
+        &path,
+        format!(
+            "@echo ran> \"{}\"\r\n@ping -n 6 127.0.0.1 >nul\r\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
     path
+}
+
+/// Calls the provider (backed by `slow_helper`) and checks it gives up empty and fast, and that
+/// the helper really started (a spawn failure would also return empty and fast). A cold first
+/// start can be killed by the provider's timeout before the `.cmd` writes its marker, so the
+/// call is retried a few times.
+async fn assert_times_out_empty_fast_and_ran(
+    dir: &common::TempDir,
+    provider: &dyn CompletionProvider,
+    line: &str,
+) {
+    let marker = dir.join("ran.txt");
+    for _ in 0..3 {
+        let started = std::time::Instant::now();
+        let sugs = provider.complete(line, "").await;
+        assert!(sugs.is_empty());
+        assert!(started.elapsed() < std::time::Duration::from_millis(1000));
+        for _ in 0..40 {
+            if marker.exists() {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    }
+    panic!("the helper never wrote its marker, so it did not run");
 }
 
 #[tokio::test]
@@ -507,10 +540,7 @@ async fn test_slow_carapace_helper_times_out_empty_and_fast() {
     let dir = common::TempDir::new("slow_carapace");
     let helper = slow_helper(&dir);
     let provider = CarapaceProvider::with_binary(helper.to_string_lossy());
-    let started = std::time::Instant::now();
-    let sugs = provider.complete("git sta", "").await;
-    assert!(sugs.is_empty());
-    assert!(started.elapsed() < std::time::Duration::from_millis(1000));
+    assert_times_out_empty_fast_and_ran(&dir, &provider, "git sta").await;
 }
 
 #[tokio::test]
@@ -518,8 +548,5 @@ async fn test_slow_zoxide_helper_times_out_empty_and_fast() {
     let dir = common::TempDir::new("slow_zoxide");
     let helper = slow_helper(&dir);
     let provider = ZoxideProvider::with_binary(helper.to_string_lossy());
-    let started = std::time::Instant::now();
-    let sugs = provider.complete("cd x", "").await;
-    assert!(sugs.is_empty());
-    assert!(started.elapsed() < std::time::Duration::from_millis(1000));
+    assert_times_out_empty_fast_and_ran(&dir, &provider, "cd x").await;
 }

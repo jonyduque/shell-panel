@@ -229,13 +229,13 @@ fn test_control_characters_in_suggestion_text_are_drawn_inert() {
 fn test_bidi_and_line_separators_are_drawn_inert() {
     let sug = Suggestion::new(
         "a",
-        "a\u{202e}b\u{2028}c",
+        "a\u{202e}b\u{2028}c\u{061c}z",
         Some("d\u{200f}e\u{2066}f\u{2069}g\u{2029}h\u{200e}i".into()),
         50,
     );
     let theme = Theme::default();
     let line = format_suggestion_line_with_theme(&sug, true, 80, &theme);
-    assert!(line.contains("a?b?c"), "{line:?}");
+    assert!(line.contains("a?b?c?z"), "{line:?}");
     assert!(line.contains("d?e?f?g?h?i"), "{line:?}");
 }
 

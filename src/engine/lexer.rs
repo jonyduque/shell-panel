@@ -325,7 +325,8 @@ pub fn token_tail(after: &str) -> &str {
 
 /// The quote still open at the end of `raw` (the source text of a word, up to the cursor), read
 /// with PowerShell's rules: outside quotes a backtick escapes the next character; inside `'...'`
-/// the pair `''` is a literal quote; inside `"..."` a backtick escapes the next character.
+/// the pair `''` is a literal quote; inside `"..."` the pair `""` is a literal quote and a backtick
+/// escapes the next character.
 pub fn open_quote(raw: &str) -> Option<char> {
     let mut state = DelimQuoteState::Normal;
     let mut chars = raw.chars().peekable();
@@ -352,7 +353,13 @@ pub fn open_quote(raw: &str) -> Option<char> {
                 '`' => {
                     chars.next();
                 }
-                '"' => state = DelimQuoteState::Normal,
+                '"' => {
+                    if chars.peek() == Some(&'"') {
+                        chars.next();
+                    } else {
+                        state = DelimQuoteState::Normal;
+                    }
+                }
                 _ => {}
             },
         }
@@ -365,8 +372,8 @@ pub fn open_quote(raw: &str) -> Option<char> {
 }
 
 /// The rest of a quoted word after the cursor, for a cursor inside an open `quote`: everything
-/// up to and including the first closing `quote` (a doubled `''` inside single quotes and a
-/// backtick-escaped `"` inside double quotes do not close it), or all of `after` when it is
+/// up to and including the first closing `quote` (a doubled quote and, inside double quotes, a
+/// backtick-escaped `"` do not close it), or all of `after` when it is
 /// never closed.
 pub fn quoted_tail(after: &str, quote: char) -> &str {
     let mut chars = after.char_indices().peekable();
@@ -374,7 +381,7 @@ pub fn quoted_tail(after: &str, quote: char) -> &str {
         if quote == '"' && c == '`' {
             chars.next();
         } else if c == quote {
-            if quote == '\'' && matches!(chars.peek(), Some(&(_, '\''))) {
+            if matches!(chars.peek(), Some(&(_, next)) if next == quote) {
                 chars.next();
             } else {
                 return &after[..i + c.len_utf8()];

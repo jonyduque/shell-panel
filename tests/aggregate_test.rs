@@ -407,6 +407,22 @@ fn test_external_suggestion_inside_quotes_deletes_the_closing_quote() {
 }
 
 #[test]
+fn test_doubled_double_quote_inside_quotes_is_literal() {
+    // `cd "a|""b" x`: the `""` is a literal quote, so the tail runs to the real closing quote
+    // (`""b"`, 4 bytes) and the ` x` behind it stays.
+    let spec = Suggestion::new(r#""C:\a b""#, r"C:\a b", None, 70);
+    let r = report(r#"cd "a""b" x"#, 5, 0, 0, vec![]);
+    assert_eq!(
+        plan_replacement(&r, &spec),
+        ReplacementAction {
+            backspace_count: 2,
+            delete_count: 4,
+            insert_text: r#""C:\a b""#.into()
+        }
+    );
+}
+
+#[test]
 fn test_plan_replacement_survives_a_range_after_the_cursor() {
     let r = report("abcdef", 2, 3, 2, vec![]);
     let shell = Suggestion::new("xyz", "xyz", None, 70).with_shell_range();
