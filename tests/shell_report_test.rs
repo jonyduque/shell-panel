@@ -302,6 +302,16 @@ fn test_session_survives_a_script_that_clears_the_global_variables() {
         "no RE/RS after Enter, screen: {}",
         term.screen()
     );
+    // The marker still follows the location after the globals are gone.
+    std::fs::create_dir(dir.join("sub")).unwrap();
+    term.send(b"Set-Location sub\r");
+    assert!(
+        term.wait_until(Duration::from_secs(15), |t| last_rs(&t.raw)
+            .flatten()
+            .is_some_and(|c| c.ends_with(r"\sub"))),
+        "the marker lost the location: {:?}",
+        last_rs(&term.raw)
+    );
     term.send(b"echo hi");
     assert!(term.wait_for_text("echo hi", Duration::from_secs(15)));
     let report = request_report(&mut term);
@@ -363,6 +373,41 @@ fn test_backslash_and_semicolon_next_to_non_ascii_round_trip() {
     let report = request_report(&mut term);
     assert_eq!(report.line, line);
     assert_eq!(report.cursor, line.encode_utf16().count());
+    drop(term);
+    remove_dir_when_released(&dir);
+}
+
+/// The cwd of the last ReadLine marker: `None` without a marker, `Some(None)` for an empty one.
+fn last_rs(raw: &[u8]) -> Option<Option<String>> {
+    let marker = format!("\x1b]6973;{TOKEN};RS;");
+    let marker = marker.as_bytes();
+    let start = raw.windows(marker.len()).rposition(|w| w == marker)?;
+    let end = start + raw[start..].iter().position(|&b| b == 0x07)?;
+    match parse_osc_sequence(std::str::from_utf8(&raw[start + 2..end]).ok()?, TOKEN)? {
+        OscEvent::ReadLineStarted { cwd } => Some(cwd),
+        _ => None,
+    }
+}
+
+#[test]
+fn test_readline_marker_follows_set_location() {
+    let (mut term, dir) = ready_shell("follow");
+    std::fs::create_dir(dir.join("sub")).unwrap();
+    term.send(b"Set-Location sub\r");
+    assert!(
+        term.wait_until(Duration::from_secs(15), |t| last_rs(&t.raw)
+            .flatten()
+            .is_some_and(|c| c.ends_with(r"\sub"))),
+        "the marker kept the start directory: {:?}",
+        last_rs(&term.raw)
+    );
+    // Outside the file system the location is reported as empty.
+    term.send(b"Set-Location HKLM:\r");
+    assert!(
+        term.wait_until(Duration::from_secs(15), |t| last_rs(&t.raw) == Some(None)),
+        "the marker kept a stale path: {:?}",
+        last_rs(&term.raw)
+    );
     drop(term);
     remove_dir_when_released(&dir);
 }

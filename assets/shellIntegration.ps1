@@ -27,16 +27,19 @@ if (Get-Command PSConsoleHostReadLine -ErrorAction Ignore) {
     # Wrapping our own wrapper on a second load would send every marker twice. The wrapper is
     # recognised by the marker comment in its body, since no global variable may be relied on.
     if (-not $function:PSConsoleHostReadLine.ToString().Contains('shell-panel-readline-wrapper')) {
-        $sp_original = $function:PSConsoleHostReadLine
-        # The original lives in the closure: a script that clears the global variables cannot
-        # take it away.
-        Set-Item -Path function:Global:PSConsoleHostReadLine -Value ({
-            # shell-panel-readline-wrapper
-            $cwd = if ($pwd.Provider.Name -eq 'FileSystem') { $pwd.ProviderPath } else { '' }
-            __SP-Send "RS;$(__SP-Escape $cwd)"
-            try { $sp_original.Invoke() } finally { __SP-Send 'RE' }
-        }.GetNewClosure())
-        Remove-Variable sp_original
+        # The closure is made in a child scope (& { param(...) ... }) so that it captures only the
+        # original: GetNewClosure at global scope would also copy $PWD and the preference
+        # variables into the wrapper, freezing the location it reports. The original lives in the
+        # closure, so a script that clears the global variables cannot take it away.
+        Set-Item -Path function:Global:PSConsoleHostReadLine -Value (& {
+            param($sp_original)
+            {
+                # shell-panel-readline-wrapper
+                $cwd = if ($pwd.Provider.Name -eq 'FileSystem') { $pwd.ProviderPath } else { '' }
+                __SP-Send "RS;$(__SP-Escape $cwd)"
+                try { $sp_original.Invoke() } finally { __SP-Send 'RE' }
+            }.GetNewClosure()
+        } $function:PSConsoleHostReadLine)
     }
 }
 
