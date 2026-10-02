@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 <#
 .SYNOPSIS
   Snapshot and compare the parts of the user's machine that shell-panel's tests and installer can

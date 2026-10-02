@@ -71,8 +71,13 @@ param(
         fail = [char]::ConvertFromUtf32(0x274C)
     }
     function Format-Path([string]$text) { if ($styled) { "$e[3m$text$e[23m" } else { $text } }
-    function Format-Cmd([string]$text) { if ($styled) { "$e[1;36m$text$e[22;39m" } else { $text } }
-    function Write-Styled([string]$icon, [string]$sgr, [string]$text) { Write-Host "$e[${sgr}m$icon $text$e[0m" }
+    # A command span ends with bold and colour off ($cmdEnd); inside a coloured line Write-Styled
+    # follows that with the line's own colour again, so the text after the span keeps it.
+    $cmdEnd = "$e[22;39m"
+    function Format-Cmd([string]$text) { if ($styled) { "$e[1;36m$text$cmdEnd" } else { $text } }
+    function Write-Styled([string]$icon, [string]$sgr, [string]$text) {
+        Write-Host "$e[${sgr}m$icon $($text.Replace($cmdEnd, "$cmdEnd$e[${sgr}m"))$e[0m"
+    }
     function Write-Step([string]$text) { if ($styled) { Write-Styled $icons.step '36' $text } else { Write-Host "[*] $text" } }
     function Write-Done([string]$text) { if ($styled) { Write-Styled $icons.done '32' $text } else { Write-Host "[OK] $text" } }
     function Write-Note([string]$text) { if ($styled) { Write-Styled $icons.note '33' $text } else { Write-Host "[i] $text" } }
@@ -254,8 +259,9 @@ param(
             Write-Note 'Open the "PowerShell (shell-panel)" profile in Windows Terminal, or run shell-panel in a new terminal window.'
         }
     } catch {
-        # Styled mode only: plain mode leaves the error to PowerShell's own report.
-        if ($styled) { Write-Fail $_.Exception.Message }
+        # Styled mode only, and only a headline: the message itself comes once, in PowerShell's own
+        # report of the throw below. Plain mode leaves the error to that report alone.
+        if ($styled) { Write-Fail 'Install failed:' }
         throw
     } finally {
         if ($null -ne $savedProtocol) { [Net.ServicePointManager]::SecurityProtocol = $savedProtocol }
