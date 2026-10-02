@@ -243,3 +243,15 @@ controls; the console mode is restored on exit and on panic.
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_018M2Bm1i7LaNF65teCQqU4y
 ```
+
+## Deferred from the execution of this plan
+
+Recorded by the reviews of commits 8e264a7..5c1837e; none blocks merge.
+
+- panic hook clears VT input for panics inside tokio tasks while the session continues (same class as disable_raw_mode there)
+- if set_vt_input fails, program_mode flips without the console mode (logged only)
+- no test for mouse/focus/paste passthrough claims
+- quiet_session 15 s wait is tight with 19 parallel sessions; raise it if CI flakes
+- the 20 ms deadline or 64 KiB cap can end a write inside an escape sequence (e.g. a paste's closing ESC[201~); write up to the last ESC and carry the tail
+- unfinished-escape helper does not cover OSC/DCS strings split across reads
+- a resize during the wait flushes a partial sequence; an Esc/arrow typed across the switch back to prompt mode is dropped / leaves `[A` text
