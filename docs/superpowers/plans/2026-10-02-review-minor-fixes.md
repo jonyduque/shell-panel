@@ -141,3 +141,18 @@ Commit: `fix(installer): helpful errors on a failed release lookup, restore TLS 
 - M2 (prediction and history in e2e): closed by `quiet_session` (commits 852378d, 1129890).
 - "Cursor inside a quoted word containing a space leaves the rest": closed by `quoted_tail` (753c35f); Task 1 extends it to escapes.
 - "token_tail tests thin": Task 1.
+
+## Deferred from the execution of this plan
+
+Recorded by the task and final reviews of commits 655bf9d..4ba0a0a; none blocks merge.
+
+- M8 mutation relies on sort internals (indirect but either outcome fails)
+- open_quote test uses C:'My Do (no backslash) — aggregate test covers the backslash form
+- quoted_tail with cursor right after a backtick inside "..." and doubled "" inside double quotes
+- trailing space kept before a separator (checkout ;x) — spec-conformant
+- publish step treats any `gh release view` failure as "not found"; upload branch does not refresh title/prerelease
+- TLS restore verified by hand only (child process state not observable from the test)
+- wiki Configuration.md prose could mention the encoding is restored
+- PSReadLine reads $? first; behind the wrapper it sees the wrapper's own $? (error-status indicator lost) — pre-existing
+- tests/common resize doc wording; "icons" in TOP_LEVEL_KEYS unreachable
+- remove_dir_when_released gives up silently; drain may overshoot max by one quiet interval; shell_report/e2e_unicode still use raw temp dirs
