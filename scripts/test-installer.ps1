@@ -172,7 +172,8 @@ try {
     $lookup = "& '$(Join-Path $root 'install.ps1')' -InstallDir '$installDir' -TerminalFragmentDir '$fragmentDir' -ApiUri 'http://127.0.0.1:9/'"
     Assert ((Invoke-CommandLine $lookup) -ne 0) 'a failed release lookup fails the install'
     Assert (($script:lastOutput -join "`n") -match '-Version') 'the lookup failure suggests -Version'
-    Assert (-not (Test-Path -LiteralPath $installedExe)) 'a failed release lookup installs nothing'
+    Assert (($script:lastOutput -join "`n") -match '(?s)release:\s*\(.+\)\s*Pass\s*-Version') 'the lookup failure keeps the original connection error (its text is localized and wrapped, so only its shape is checked)'
+    Assert ((Get-PathCount) -eq 0 -and -not (Test-Path -LiteralPath $fragmentDir)) 'a failed release lookup changes nothing (PATH, Terminal fragment)'
 
     Write-Host '== zip missing from SHA256SUMS.txt'
     $other = Join-Path $work 'OTHER_SHA256SUMS.txt'
