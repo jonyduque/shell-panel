@@ -412,3 +412,141 @@ fn test_plan_replacement_survives_a_range_after_the_cursor() {
     let shell = Suggestion::new("xyz", "xyz", None, 70).with_shell_range();
     let _ = plan_replacement(&r, &shell); // must not panic
 }
+
+#[test]
+fn test_merge_tie_keeps_the_external_item_and_drops_the_shell_duplicate() {
+    // M8: same priority and name, so the sort cannot separate them; the stable order keeps the
+    // external suggestion (with its description and without the shell range).
+    let external = vec![Suggestion::new("main", "main", Some("carapace".into()), 70)];
+    let shell = vec![Suggestion::new("main", "main", None, 70).with_shell_range()];
+    let merged = merge_suggestions("ma", external, shell);
+    assert_eq!(merged.len(), 1);
+    assert_eq!(merged[0].description.as_deref(), Some("carapace"));
+    assert!(!merged[0].uses_shell_range);
+}
+
+#[test]
+fn test_merge_dedupes_a_quoted_external_path_against_the_shell_one() {
+    // M9: carapace says `'My Dir/'`, PowerShell says `'.\My Dir\'`: one entry.
+    let external = vec![
+        Suggestion::new("'My Dir/'", "My Dir/", None, 70).with_kind(SuggestionKind::Directory)
+    ];
+    let shell = vec![Suggestion::new(r"'.\My Dir\'", "My Dir", None, 60)
+        .with_kind(SuggestionKind::Directory)
+        .with_shell_range()];
+    let merged = merge_suggestions("My", external, shell);
+    assert_eq!(merged.len(), 1);
+    assert_eq!(merged[0].name, "'My Dir/'");
+}
+
+#[test]
+fn test_open_quote_in_the_middle_of_a_word_is_detected_with_powershell_rules() {
+    // `cd C:\'My Do|cs'`: the quote does not start the word, but it is open at the cursor.
+    let spec = Suggestion::new(r"'C:\My Documents'", r"C:\My Documents", None, 70);
+    let r = report(r"cd C:\'My Docs'", 12, 0, 0, vec![]);
+    assert_eq!(
+        plan_replacement(&r, &spec),
+        ReplacementAction {
+            backspace_count: 9,
+            delete_count: 3,
+            insert_text: r"'C:\My Documents' ".into()
+        }
+    );
+    // `cd 'it''s|x'`: the doubled quote is an escape, so the string is still open.
+    let spec = Suggestion::new("'it''s dir'", "it's dir", None, 70);
+    let r = report("cd 'it''sx'", 9, 0, 0, vec![]);
+    assert_eq!(
+        plan_replacement(&r, &spec),
+        ReplacementAction {
+            backspace_count: 6,
+            delete_count: 2,
+            insert_text: "'it''s dir' ".into()
+        }
+    );
+}
+
+#[test]
+fn test_unterminated_quote_swallows_the_rest_of_the_line() {
+    // Closed without change: in PowerShell's grammar everything after an unclosed quote is
+    // inside the string, so the tail is the whole rest of the line.
+    let spec = Suggestion::new("'abcdef'", "abcdef", None, 70);
+    let r = report("cd 'abcdef ghi", 7, 0, 0, vec![]);
+    assert_eq!(
+        plan_replacement(&r, &spec),
+        ReplacementAction {
+            backspace_count: 4,
+            delete_count: 7,
+            insert_text: "'abcdef' ".into()
+        }
+    );
+}
+
+#[test]
+fn test_no_double_space_when_a_space_already_follows_the_replaced_range() {
+    let spec = Suggestion::new(r"'C:\My Documents'", r"C:\My Documents", None, 70);
+    // `cd 'My Do|cuments' | sort`
+    let r = report("cd 'My Documents' | sort", 9, 0, 0, vec![]);
+    assert_eq!(
+        plan_replacement(&r, &spec),
+        ReplacementAction {
+            backspace_count: 6,
+            delete_count: 8,
+            insert_text: r"'C:\My Documents'".into()
+        }
+    );
+    // A tab counts too: `git chec|kout<TAB>--quiet`.
+    let spec = Suggestion::new("checkout", "checkout", None, 90);
+    let r = report("git checkout\t--quiet", 8, 0, 0, vec![]);
+    assert_eq!(
+        plan_replacement(&r, &spec),
+        ReplacementAction {
+            backspace_count: 4,
+            delete_count: 4,
+            insert_text: "checkout".into()
+        }
+    );
+    // The shell-range branch: `Get-Ch|ildItem | sort`.
+    let shell = Suggestion::new("Get-ChildItem", "Get-ChildItem", None, 80).with_shell_range();
+    let r = report("Get-ChildItem | sort", 6, 0, 13, vec![]);
+    assert_eq!(
+        plan_replacement(&r, &shell),
+        ReplacementAction {
+            backspace_count: 6,
+            delete_count: 7,
+            insert_text: "Get-ChildItem".into()
+        }
+    );
+    // Without anything after the word the space stays.
+    let r = report("Get-ChildItem", 6, 0, 13, vec![]);
+    assert_eq!(plan_replacement(&r, &shell).insert_text, "Get-ChildItem ");
+}
+
+#[test]
+fn test_delete_count_is_in_utf16_units_for_a_multibyte_tail() {
+    // `cd ab|😀c`: the emoji costs two Delete keys.
+    let spec = Suggestion::new("abxyz", "abxyz", None, 70);
+    let r = report("cd ab😀c", 5, 0, 0, vec![]);
+    assert_eq!(
+        plan_replacement(&r, &spec),
+        ReplacementAction {
+            backspace_count: 2,
+            delete_count: 3,
+            insert_text: "abxyz ".into()
+        }
+    );
+}
+
+#[test]
+fn test_quoted_suggestion_replaces_an_unquoted_word_around_the_cursor() {
+    // `cd Proje|cts-new`: the whole word goes, the quoted zoxide path comes in.
+    let spec = Suggestion::new("'Projects new'", "Projects new", None, 70);
+    let r = report("cd Projects-new", 8, 0, 0, vec![]);
+    assert_eq!(
+        plan_replacement(&r, &spec),
+        ReplacementAction {
+            backspace_count: 5,
+            delete_count: 7,
+            insert_text: "'Projects new' ".into()
+        }
+    );
+}

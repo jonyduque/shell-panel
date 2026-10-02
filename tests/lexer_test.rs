@@ -1,5 +1,5 @@
 use shell_panel::engine::lexer::{
-    active_token_raw, lex_command_line, quoted_tail, token_tail, CommandToken,
+    active_token_raw, lex_command_line, open_quote, quoted_tail, token_tail, CommandToken,
 };
 
 #[test]
@@ -10,7 +10,6 @@ fn test_lex_command_line_basic() {
         tokens[0],
         CommandToken {
             text: "git".to_string(),
-            width: 3,
             complete: true,
             is_option: false,
         }
@@ -19,7 +18,6 @@ fn test_lex_command_line_basic() {
         tokens[1],
         CommandToken {
             text: "commit".to_string(),
-            width: 6,
             complete: true,
             is_option: false,
         }
@@ -28,7 +26,6 @@ fn test_lex_command_line_basic() {
         tokens[2],
         CommandToken {
             text: "-m".to_string(),
-            width: 2,
             complete: true,
             is_option: true,
         }
@@ -38,7 +35,6 @@ fn test_lex_command_line_basic() {
         tokens[3],
         CommandToken {
             text: "feat: test".to_string(),
-            width: 10,
             complete: true,
             is_option: false,
         }
@@ -61,7 +57,6 @@ fn test_lex_command_line_incomplete_last_token() {
         tokens[0],
         CommandToken {
             text: "git".to_string(),
-            width: 3,
             complete: true,
             is_option: false,
         }
@@ -70,7 +65,6 @@ fn test_lex_command_line_incomplete_last_token() {
         tokens[1],
         CommandToken {
             text: "stat".to_string(),
-            width: 4,
             complete: false,
             is_option: false,
         }
@@ -85,7 +79,6 @@ fn test_lex_command_line_trailing_space() {
         tokens[0],
         CommandToken {
             text: "cargo".to_string(),
-            width: 5,
             complete: true,
             is_option: false,
         }
@@ -94,7 +87,6 @@ fn test_lex_command_line_trailing_space() {
         tokens[1],
         CommandToken {
             text: "".to_string(),
-            width: 0,
             complete: false,
             is_option: false,
         }
@@ -172,13 +164,15 @@ fn test_lex_command_line_empty() {
 }
 
 #[test]
-fn test_lex_command_line_unicode_width() {
+fn test_lex_command_line_unicode_text() {
+    // M18: `width` was computed for every token and read only by tests, so it is gone; what
+    // matters for multibyte words is that the text and the completeness survive intact.
     let tokens = lex_command_line("echo 你好 🚀");
     assert_eq!(tokens.len(), 3);
     assert_eq!(tokens[1].text, "你好");
-    assert_eq!(tokens[1].width, 4); // CJK characters width = 2 each
+    assert!(tokens[1].complete);
     assert_eq!(tokens[2].text, "🚀");
-    assert_eq!(tokens[2].width, 2); // Emoji width = 2
+    assert!(!tokens[2].complete);
 }
 
 #[test]
@@ -267,6 +261,9 @@ fn test_lexer_and_active_token_agree_on_separators() {
         "git `\nsta",
         "git status `\n",
         "git status `\r\n  --sh",
+        "echo a`>& git sta",
+        "echo 'a & b' x",
+        "echo a`&b x",
     ] {
         let last = texts(input).pop().unwrap();
         assert_eq!(active_token_raw(input), last, "input: {input:?}");
@@ -327,4 +324,56 @@ fn test_token_tail_stops_at_whitespace_and_separators() {
 fn test_quoted_tail_runs_through_the_closing_quote() {
     assert_eq!(quoted_tail("cuments' x", '\''), "cuments'");
     assert_eq!(quoted_tail("abc", '"'), "abc");
+}
+
+#[test]
+fn test_token_tail_keeps_multibyte_words_whole() {
+    assert_eq!(token_tail("ção x"), "ção");
+    assert_eq!(token_tail("😀a|b"), "😀a");
+    assert_eq!(token_tail("ção"), "ção");
+}
+
+#[test]
+fn test_double_ampersand_and_double_pipe_start_a_command() {
+    assert_eq!(texts("cargo build && git sta"), vec!["git", "sta"]);
+    assert_eq!(texts("a || git sta"), vec!["git", "sta"]);
+}
+
+#[test]
+fn test_separators_inside_quotes_or_escaped_are_text() {
+    assert_eq!(texts("echo 'a & b' x"), vec!["echo", "a & b", "x"]);
+    assert_eq!(texts("echo \"a;b\" x"), vec!["echo", "a;b", "x"]);
+    assert_eq!(texts("echo a`&b x"), vec!["echo", "a&b", "x"]);
+}
+
+#[test]
+fn test_escaped_redirection_does_not_protect_the_ampersand() {
+    // The backtick-escaped `>` is a plain character, so the `&` after it is a separator.
+    assert_eq!(texts("echo a`>& git sta"), vec!["git", "sta"]);
+    assert_eq!(active_token_raw("echo a`>& git sta"), "sta");
+    // An unescaped redirection still protects it.
+    assert_eq!(
+        texts("git log 2>&1 --on"),
+        vec!["git", "log", "2>&1", "--on"]
+    );
+}
+
+#[test]
+fn test_open_quote_follows_powershell_escapes() {
+    assert_eq!(open_quote("C:\'My Do"), Some('\''));
+    assert_eq!(open_quote("'it''s"), Some('\''));
+    assert_eq!(open_quote("'done'"), None);
+    assert_eq!(open_quote("\"a`\"b"), Some('"'));
+    assert_eq!(open_quote("plain"), None);
+    // A backtick outside quotes escapes the quote that follows it.
+    assert_eq!(open_quote("a`'b"), None);
+    // Inside single quotes a backtick is literal.
+    assert_eq!(open_quote("'a`'"), None);
+}
+
+#[test]
+fn test_quoted_tail_honours_escapes() {
+    assert_eq!(quoted_tail("s x'", '\''), "s x'");
+    assert_eq!(quoted_tail("b`\"c\" d", '"'), "b`\"c\"");
+    assert_eq!(quoted_tail("a''b' x", '\''), "a''b'");
 }

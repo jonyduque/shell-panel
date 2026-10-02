@@ -475,3 +475,50 @@ fn test_every_powershell_metacharacter_is_quoted() {
         );
     }
 }
+
+#[test]
+fn test_double_quoted_directory_gets_no_trailing_space() {
+    // M10: a double-quoted directory keeps the cursor behind the backslash.
+    let action = calculate_replacement("\"My", r#"".\My Documents\""#);
+    assert_eq!(action.insert_text, r#"".\My Documents\""#);
+    assert!(!action.insert_text.ends_with(' '));
+}
+
+#[test]
+fn test_carapace_flag_value_with_a_space_is_quoted_after_the_equals() {
+    let sugs = parse_carapace_json(
+        r#"{"values":[{"value":"--name=a b"},{"value":"--force"},{"value":"--k=v"}]}"#,
+    );
+    let names: Vec<&str> = sugs.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, vec!["--name='a b'", "--force", "--k=v"]);
+    assert!(sugs.iter().all(|s| s.kind == SuggestionKind::Option));
+}
+
+/// Writes a `.cmd` helper that sleeps about five seconds.
+fn slow_helper() -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("shell-panel-slow-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("slow.cmd");
+    std::fs::write(&path, "@ping -n 6 127.0.0.1 >nul\r\n").unwrap();
+    path
+}
+
+#[tokio::test]
+async fn test_slow_carapace_helper_times_out_empty_and_fast() {
+    let helper = slow_helper();
+    let provider = CarapaceProvider::with_binary(helper.to_string_lossy());
+    let started = std::time::Instant::now();
+    let sugs = provider.complete("git sta", "").await;
+    assert!(sugs.is_empty());
+    assert!(started.elapsed() < std::time::Duration::from_millis(1000));
+}
+
+#[tokio::test]
+async fn test_slow_zoxide_helper_times_out_empty_and_fast() {
+    let helper = slow_helper();
+    let provider = ZoxideProvider::with_binary(helper.to_string_lossy());
+    let started = std::time::Instant::now();
+    let sugs = provider.complete("cd x", "").await;
+    assert!(sugs.is_empty());
+    assert!(started.elapsed() < std::time::Duration::from_millis(1000));
+}

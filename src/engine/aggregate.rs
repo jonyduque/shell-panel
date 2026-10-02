@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
-use crate::engine::lexer::{active_token_raw, lex_command_line, quoted_tail, token_tail};
+use crate::engine::lexer::{
+    active_token_raw, lex_command_line, open_quote, quoted_tail, token_tail,
+};
 use crate::engine::provider::{CompletionProvider, Suggestion, SuggestionKind};
 use crate::engine::providers::carapace::CarapaceProvider;
 use crate::engine::providers::json_spec::JsonSpecProvider;
@@ -168,28 +170,39 @@ fn missing_suffix(
 pub fn plan_replacement(report: &ShellReport, suggestion: &Suggestion) -> ReplacementAction {
     let cursor = report.cursor_byte().unwrap_or(report.line.len());
     let range = report.replacement_range();
-    let mut action = match range {
-        Some((start, end)) if suggestion.uses_shell_range => replace_range(
-            &report.line[start..cursor],
-            &report.line[cursor..end],
-            &suggestion.name,
+    // `action` and the text right behind the range it replaces.
+    let (mut action, behind) = match range {
+        Some((start, end)) if suggestion.uses_shell_range => (
+            replace_range(
+                &report.line[start..cursor],
+                &report.line[cursor..end],
+                &suggestion.name,
+            ),
+            report.line.get(end..).unwrap_or(""),
         ),
         _ => {
             let before = active_token_raw(&report.line[..cursor]);
             let after = &report.line[cursor..];
-            let tail = match before.chars().next() {
-                Some(quote @ ('\'' | '"')) if !before[1..].contains(quote) => {
-                    quoted_tail(after, quote)
-                }
-                _ => token_tail(after),
+            let tail = match open_quote(before) {
+                Some(quote) => quoted_tail(after, quote),
+                None => token_tail(after),
             };
-            replace_range(before, tail, &suggestion.name)
+            (
+                replace_range(before, tail, &suggestion.name),
+                &after[tail.len()..],
+            )
         }
     };
     if let Some(suffix) = shell_result_type(report, suggestion)
         .and_then(|result_type| missing_suffix(report, range, result_type))
     {
         action.insert_text = format!("{}{}", action.insert_text.trim_end_matches(' '), suffix);
+    }
+    // A space already follows the replaced range: a second one would be typed into the line.
+    if behind.starts_with([' ', '\t']) {
+        action
+            .insert_text
+            .truncate(action.insert_text.trim_end_matches(' ').len());
     }
     action
 }

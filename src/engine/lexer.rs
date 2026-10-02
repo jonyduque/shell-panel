@@ -1,12 +1,8 @@
-use unicode_width::UnicodeWidthStr;
-
 /// Represents a parsed token from a command line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandToken {
     /// The string text of the token (unquoted/unescaped).
     pub text: String,
-    /// Terminal display width of the token text.
-    pub width: usize,
     /// Whether this token is complete (i.e. followed by a space, separator, or closed quote).
     pub complete: bool,
     /// Whether this token is an option/flag (starts with `-`).
@@ -14,13 +10,11 @@ pub struct CommandToken {
 }
 
 impl CommandToken {
-    /// Creates a new `CommandToken` with calculated width.
+    /// Creates a new `CommandToken`.
     pub fn new(text: impl Into<String>, complete: bool, is_option: bool) -> Self {
         let text = text.into();
-        let width = UnicodeWidthStr::width(text.as_str());
         Self {
             text,
-            width,
             complete,
             is_option,
         }
@@ -113,9 +107,12 @@ fn split_segments(input: &str) -> Vec<&str> {
     let chars: Vec<(usize, char)> = input.char_indices().collect();
     let len = chars.len();
     let mut i = 0;
+    // Whether the previous character was escaped by a backtick (so it is plain text).
+    let mut escaped = false;
 
     while i < len {
         let (byte_pos, ch) = chars[i];
+        let prev_escaped = std::mem::take(&mut escaped);
         match state {
             DelimQuoteState::Normal => {
                 if ch == '\'' {
@@ -127,6 +124,7 @@ fn split_segments(input: &str) -> Vec<&str> {
                 } else if ch == '`' {
                     // Backtick escapes next character outside quotes in PowerShell; a backtick
                     // before CRLF continues the line, so both break characters are skipped.
+                    escaped = true;
                     i += if chars.get(i + 1).map(|c| c.1) == Some('\r')
                         && chars.get(i + 2).map(|c| c.1) == Some('\n')
                     {
@@ -134,8 +132,9 @@ fn split_segments(input: &str) -> Vec<&str> {
                     } else {
                         2
                     };
-                } else if ch == '&' && i > 0 && chars[i - 1].1 == '>' {
-                    // `2>&1`, `*>&1`: part of a redirection, not a separator.
+                } else if ch == '&' && i > 0 && chars[i - 1].1 == '>' && !prev_escaped {
+                    // `2>&1`, `*>&1`: part of a redirection, not a separator (unless the `>` was
+                    // escaped with a backtick, then it is only a letter).
                     i += 1;
                 } else if COMMAND_SEPARATORS.contains(&ch) {
                     segments.push(&input[start..byte_pos]);
@@ -324,13 +323,65 @@ pub fn token_tail(after: &str) -> &str {
     &after[..end]
 }
 
-/// The rest of a quoted word after the cursor, for a cursor inside an open `quote`: everything
-/// up to and including the first closing `quote`, or all of `after` when it is never closed.
-pub fn quoted_tail(after: &str, quote: char) -> &str {
-    match after.find(quote) {
-        Some(i) => &after[..i + quote.len_utf8()],
-        None => after,
+/// The quote still open at the end of `raw` (the source text of a word, up to the cursor), read
+/// with PowerShell's rules: outside quotes a backtick escapes the next character; inside `'...'`
+/// the pair `''` is a literal quote; inside `"..."` a backtick escapes the next character.
+pub fn open_quote(raw: &str) -> Option<char> {
+    let mut state = DelimQuoteState::Normal;
+    let mut chars = raw.chars().peekable();
+    while let Some(c) = chars.next() {
+        match state {
+            DelimQuoteState::Normal => match c {
+                '`' => {
+                    chars.next();
+                }
+                '\'' => state = DelimQuoteState::SingleQuote,
+                '"' => state = DelimQuoteState::DoubleQuote,
+                _ => {}
+            },
+            DelimQuoteState::SingleQuote => {
+                if c == '\'' {
+                    if chars.peek() == Some(&'\'') {
+                        chars.next();
+                    } else {
+                        state = DelimQuoteState::Normal;
+                    }
+                }
+            }
+            DelimQuoteState::DoubleQuote => match c {
+                '`' => {
+                    chars.next();
+                }
+                '"' => state = DelimQuoteState::Normal,
+                _ => {}
+            },
+        }
     }
+    match state {
+        DelimQuoteState::Normal => None,
+        DelimQuoteState::SingleQuote => Some('\''),
+        DelimQuoteState::DoubleQuote => Some('"'),
+    }
+}
+
+/// The rest of a quoted word after the cursor, for a cursor inside an open `quote`: everything
+/// up to and including the first closing `quote` (a doubled `''` inside single quotes and a
+/// backtick-escaped `"` inside double quotes do not close it), or all of `after` when it is
+/// never closed.
+pub fn quoted_tail(after: &str, quote: char) -> &str {
+    let mut chars = after.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        if quote == '"' && c == '`' {
+            chars.next();
+        } else if c == quote {
+            if quote == '\'' && matches!(chars.peek(), Some(&(_, '\''))) {
+                chars.next();
+            } else {
+                return &after[..i + c.len_utf8()];
+            }
+        }
+    }
+    after
 }
 
 /// Returns the raw source text (quotes and backtick escapes included) of the token that ends
@@ -339,12 +390,15 @@ pub fn active_token_raw(input: &str) -> &str {
     let mut start = 0;
     let mut state = DelimQuoteState::Normal;
     let mut chars = input.char_indices();
+    // Whether the previous character was escaped by a backtick (so it is plain text).
+    let mut escaped = false;
 
     while let Some((i, c)) = chars.next() {
         let next = i + c.len_utf8();
+        let prev_escaped = std::mem::take(&mut escaped);
         match state {
             DelimQuoteState::Normal => match c {
-                '&' if input[..i].ends_with('>') => {}
+                '&' if !prev_escaped && input[..i].ends_with('>') => {}
                 c if c == ' ' || c == '\t' || COMMAND_SEPARATORS.contains(&c) => start = next,
                 '\'' => state = DelimQuoteState::SingleQuote,
                 '"' => state = DelimQuoteState::DoubleQuote,
@@ -360,7 +414,8 @@ pub fn active_token_raw(input: &str) -> &str {
                             }
                         }
                         Some((j, '\n')) => start = j + 1,
-                        _ => {}
+                        Some(_) => escaped = true,
+                        None => {}
                     }
                 }
                 '=' if input[start..i].starts_with('-') => start = next,

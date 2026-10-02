@@ -84,15 +84,19 @@ pub fn parse_carapace_json(json_str: &str) -> Vec<Suggestion> {
                 .filter(|d| !d.is_empty())
                 .unwrap_or_else(|| item.value.clone());
             let description = item.description.filter(|d| !d.is_empty());
-            let kind = if item.value.starts_with('-') {
+            let is_flag = item.value.starts_with('-');
+            let kind = if is_flag {
                 SuggestionKind::Option
             } else {
                 SuggestionKind::Subcommand
             };
-            let name = if item.value.starts_with('-') {
-                item.value.clone()
-            } else {
-                quote_for_powershell(&item.value)
+            let name = match item.value.split_once('=') {
+                // `--name=a b` becomes `--name='a b'`: only the value needs quotes.
+                Some((flag, value)) if is_flag => {
+                    format!("{flag}={}", quote_for_powershell(value))
+                }
+                _ if is_flag => item.value.clone(),
+                _ => quote_for_powershell(&item.value),
             };
             Suggestion::new(name, display, description, 70).with_kind(kind)
         })
