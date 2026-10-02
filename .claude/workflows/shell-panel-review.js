@@ -78,6 +78,24 @@ const VERDICT_SCHEMA = {
   },
 }
 
+// Each rule below was broken once by an agent in this repository: an installer run with default
+// locations reinstalled the user's real install, and the installer test run under Windows
+// PowerShell 5.1 leaked a test entry into the user's PATH.
+const SAFETY = `SEGURANCA - a maquina do usuario nao e fixture de teste:
+- NUNCA rode install.ps1 ou uninstall.ps1 com os locais padrao (nem como arquivo, nem via irm | iex).
+  So via scripts/test-installer.ps1 (lancado a partir do pwsh 7) ou com -InstallDir e
+  -TerminalFragmentDir temporarios.
+- So UM teste do instalador por vez na maquina: o test-installer.ps1 segura o mutex
+  Global\\shell-panel-installer-test; nunca o rode a partir de agentes em paralelo.
+- Se o test-installer.ps1 recusar com "Refusing to run: a previous installer test left ...",
+  PARE e relate; NUNCA rode o comando de restauracao que ele imprime (e para o usuario).
+- NUNCA escreva no Path de HKCU\\Environment, no historico do PSReadLine, em fragmentos do Windows
+  Terminal, em %LOCALAPPDATA%\\Programs\\shell-panel ou em %USERPROFILE%\\.config\\shell-panel*.
+- Antes e depois de rodar sessoes PowerShell ou o teste do instalador:
+  ${CFG.userState ?? 'user_state.ps1 -Save/-Compare'}
+  (nao rode ao mesmo tempo que um teste do instalador em andamento). Se acusar mudanca, PARE e
+  relate; nao tente consertar.`
+
 function where(u) {
   if (u.lens.worktree) {
     return `Voce roda numa WORKTREE git propria (seu diretorio atual), na base ${CFG.baseCommit}.
@@ -86,10 +104,16 @@ function where(u) {
 - NUNCA defina CARGO_TARGET_DIR: os e2e usam target/debug/shell-panel.exe do proprio target.
 - Arquivos de rascunho: so tests/zz_review_*.rs. APAGUE todos antes de terminar e confirme com
   \`git status --porcelain\` vazio (worktree limpa e removida sozinha).
-- Nao commite.`
+- e2e: \`-- --test-threads=1\`; sob carga paralela o primeiro comando de uma sessao ja estourou 15 s.
+  Uma falha so conta depois de uma segunda execucao (cole as duas).
+- Nao commite.
+
+${SAFETY}`
   }
   return `READ-ONLY no checkout ${ROOT}: nao edite, nao crie arquivo, nao formate, nao commite.
-Pode rodar comandos de leitura, git grep, os scripts da skill e \`cargo run -q -- <opcoes>\`.`
+Pode rodar comandos de leitura, git grep, os scripts da skill e \`cargo run -q -- <opcoes>\`.
+
+${SAFETY}`
 }
 
 function scope(u) {

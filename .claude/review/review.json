@@ -4,59 +4,166 @@
     "(passada inteira em args.config) e pela skill .claude/skills/shell-panel-review.",
     "Agentes em worktree NAO enxergam arquivos nao versionados: por isso tudo aqui usa caminho absoluto."
   ],
-
   "root": "C:/Users/jonyd/Projetos/shell-panel",
   "skillDir": "C:/Users/jonyd/Projetos/shell-panel/.claude/skills/shell-panel-review",
-  "baseCommit": "562e3e0",
-
+  "baseCommit": "4f5469c",
   "gate": "pwsh -NoProfile -File C:/Users/jonyd/Projetos/shell-panel/.claude/skills/shell-panel-review/scripts/verify.ps1",
   "mutate": "pwsh -NoProfile -File C:/Users/jonyd/Projetos/shell-panel/.claude/skills/shell-panel-review/scripts/mutate.ps1 -Path <arquivo de producao> -Anchor '<trecho exato>' -Replacement '<mutacao que compila>' -TestCommand 'cargo test -q --test <arquivo> <filtro>'",
   "consumers": "pwsh -NoProfile -File C:/Users/jonyd/Projetos/shell-panel/.claude/skills/shell-panel-review/scripts/find_consumers.ps1 -Symbol <nome> -OriginFile <arquivo>",
-
   "partitions": [
     {
       "id": "core",
       "summary": "Reator (App::run), CLI, carga de configuracao, main/panic hook/raw mode",
-      "files": ["src/core/app.rs", "src/core/config.rs", "src/core/mod.rs", "src/main.rs", "src/cli.rs", "src/lib.rs"],
-      "tests": ["tests/cli_test.rs", "tests/config_test.rs", "tests/tab_trigger_test.rs", "tests/e2e_binary_test.rs", "tests/common/mod.rs"]
+      "files": [
+        "src/core/app.rs",
+        "src/core/config.rs",
+        "src/core/mod.rs",
+        "src/main.rs",
+        "src/cli.rs",
+        "src/lib.rs"
+      ],
+      "tests": [
+        "tests/cli_test.rs",
+        "tests/config_test.rs",
+        "tests/tab_trigger_test.rs",
+        "tests/e2e_binary_test.rs",
+        "tests/common/mod.rs",
+        "tests/e2e_report_order_test.rs",
+        "tests/e2e_unicode_input_test.rs"
+      ]
     },
     {
       "id": "shell-pty",
       "summary": "Mensagens OSC 6973, parser de stream, relatorio CMP, script de integracao, ConPTY e escolha do shell",
-      "files": ["src/shell/command_state.rs", "src/shell/integration.rs", "src/shell/mod.rs", "src/shell/osc.rs", "src/shell/report.rs", "src/shell/stream.rs", "src/pty/conpty.rs", "src/pty/mod.rs", "src/pty/shell.rs", "assets/shellIntegration.ps1"],
-      "tests": ["tests/osc_test.rs", "tests/stream_test.rs", "tests/shell_report_test.rs", "tests/pty_test.rs", "tests/e2e_pty_test.rs"]
+      "files": [
+        "src/shell/command_state.rs",
+        "src/shell/integration.rs",
+        "src/shell/mod.rs",
+        "src/shell/osc.rs",
+        "src/shell/report.rs",
+        "src/shell/stream.rs",
+        "src/pty/conpty.rs",
+        "src/pty/mod.rs",
+        "src/pty/shell.rs",
+        "assets/shellIntegration.ps1"
+      ],
+      "tests": [
+        "tests/osc_test.rs",
+        "tests/stream_test.rs",
+        "tests/shell_report_test.rs",
+        "tests/pty_test.rs",
+        "tests/e2e_pty_test.rs"
+      ]
     },
     {
       "id": "engine",
       "summary": "Lexer, provedores (specs JSON, carapace, zoxide), merge e plano de substituicao",
-      "files": ["src/engine/aggregate.rs", "src/engine/lexer.rs", "src/engine/mod.rs", "src/engine/provider.rs", "src/engine/replacement.rs", "src/engine/providers/mod.rs", "src/engine/providers/json_spec.rs", "src/engine/providers/carapace.rs", "src/engine/providers/zoxide.rs", "assets/specs/git.json", "assets/specs/docker.json"],
-      "tests": ["tests/engine_test.rs", "tests/lexer_test.rs", "tests/aggregate_test.rs"]
+      "files": [
+        "src/engine/aggregate.rs",
+        "src/engine/lexer.rs",
+        "src/engine/mod.rs",
+        "src/engine/provider.rs",
+        "src/engine/replacement.rs",
+        "src/engine/quote.rs",
+        "src/engine/providers/mod.rs",
+        "src/engine/providers/json_spec.rs",
+        "src/engine/providers/carapace.rs",
+        "src/engine/providers/zoxide.rs",
+        "assets/specs/git.json",
+        "assets/specs/docker.json"
+      ],
+      "tests": [
+        "tests/engine_test.rs",
+        "tests/lexer_test.rs",
+        "tests/aggregate_test.rs"
+      ]
     },
     {
       "id": "io-ui-vt",
-      "summary": "Codificacao de teclas, filtro de entrada, raw mode, dropdown (renderer, tema, cores, estado), espelho VT",
-      "files": ["src/io/filter.rs", "src/io/key_event.rs", "src/io/mod.rs", "src/io/raw_mode.rs", "src/ui/color.rs", "src/ui/mod.rs", "src/ui/patch.rs", "src/ui/renderer.rs", "src/ui/suggestion_state.rs", "src/ui/theme.rs", "src/vt/emulator.rs", "src/vt/mod.rs"],
-      "tests": ["tests/io_test.rs", "tests/renderer_test.rs", "tests/theme_test.rs", "tests/color_test.rs", "tests/vt_test.rs"]
+      "summary": "Codificacao de teclas, filtro de entrada, raw mode, dropdown (renderer, tema, cores, estado), espelho VT; modo de entrada do console (prompt vs programa)",
+      "files": [
+        "src/io/console_mode.rs",
+        "src/io/filter.rs",
+        "src/io/key_event.rs",
+        "src/io/mod.rs",
+        "src/io/raw_mode.rs",
+        "src/ui/color.rs",
+        "src/ui/mod.rs",
+        "src/ui/patch.rs",
+        "src/ui/renderer.rs",
+        "src/ui/suggestion_state.rs",
+        "src/ui/theme.rs",
+        "src/vt/emulator.rs",
+        "src/vt/mod.rs"
+      ],
+      "tests": [
+        "tests/io_test.rs",
+        "tests/renderer_test.rs",
+        "tests/theme_test.rs",
+        "tests/color_test.rs",
+        "tests/vt_test.rs"
+      ]
+    },
+    {
+      "id": "installer",
+      "summary": "Instalador e desinstalador PowerShell (irm | iex e arquivo, 5.1 e 7), teste end-to-end do instalador, workflows de CI e release",
+      "files": [
+        "install.ps1",
+        "uninstall.ps1",
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml",
+        "vendor/crossterm/SHELL-PANEL-PATCH.md"
+      ],
+      "tests": [
+        "scripts/test-installer.ps1"
+      ]
     }
   ],
-
   "_lenses": [
     "perPartition: uma instancia por particao. crossCutting: uma instancia sobre o repositorio todo,",
     "porque a pergunta atravessa particoes (fronteira de confianca, codigo morto, docs).",
     "worktree=true: o agente executa codigo (testes de rascunho, mutacao) e precisa de arvore propria."
   ],
   "lenses": [
-    { "id": "correcao",   "scope": "perPartition", "effort": "high",   "worktree": true },
-    { "id": "teste",      "scope": "perPartition", "effort": "high",   "worktree": true },
-    { "id": "seguranca",  "scope": "crossCutting", "effort": "high",   "worktree": true },
-    { "id": "interativo", "scope": "crossCutting", "effort": "high",   "worktree": true },
-    { "id": "manutencao", "scope": "crossCutting", "effort": "medium", "worktree": false },
-    { "id": "docs",       "scope": "crossCutting", "effort": "medium", "worktree": false }
+    {
+      "id": "correcao",
+      "scope": "perPartition",
+      "effort": "high",
+      "worktree": true
+    },
+    {
+      "id": "teste",
+      "scope": "perPartition",
+      "effort": "high",
+      "worktree": true
+    },
+    {
+      "id": "seguranca",
+      "scope": "crossCutting",
+      "effort": "high",
+      "worktree": true
+    },
+    {
+      "id": "interativo",
+      "scope": "crossCutting",
+      "effort": "high",
+      "worktree": true
+    },
+    {
+      "id": "manutencao",
+      "scope": "crossCutting",
+      "effort": "medium",
+      "worktree": false
+    },
+    {
+      "id": "docs",
+      "scope": "crossCutting",
+      "effort": "medium",
+      "worktree": false
+    }
   ],
-
-  "maxRefutations": 30,
-
-  "projectRules": "- O terminal do usuario e o produto: stdout so recebe saida do shell e o dropdown; log so vai para arquivo com --verbose. Qualquer print solto corrompe a tela, e o usuario ve lixo sem erro.\n- Raw mode e cursor precisam voltar ao normal em toda saida (normal, erro, panic, shell morto). Terminal quebrado depois de sair e o pior defeito visivel.\n- Toda saida do PTY e nao confiavel: qualquer programa rodando no shell pode emitir OSC 6973. Texto vindo de relatorio CMP e escrito no PTY como se fosse digitado; CR/LF ou bytes de controle ali executam comando.\n- Indices do relatorio (cursor, replacementIndex, replacementLength) sao em unidades UTF-16 do .NET, nao bytes UTF-8 nem chars do Rust.\n- Tab sem relatorio em 3 s cai para o Tab do PowerShell; Tab nunca pode ser perdido nem duplicado.\n- O script de integracao nao pode imprimir nada sobre a linha que o usuario edita, nao pode mudar o que o prompt do usuario ve ($?, LASTEXITCODE) e nao usa -ExecutionPolicy Bypass (decisao: politica do usuario nao e tocada).\n- Ctrl+Alt+Shift+F12 e reservado para o shell-panel dentro da sessao.\n- Windows e PowerShell apenas; outros shells sao rejeitados com exit 2 de proposito.\n- Codigo formatado (cargo fmt) e clippy sem avisos com -D warnings.",
-
-  "decisionsNotToRelitigate": "- Completar dentro da sessao do usuario via PSReadLine (Tasks 7-9 do plano review-fixes) em vez de worker PowerShell separado: o worker ignorava cwd, variaveis e completers registrados. Nao proponha voltar ao worker.\n- Sem -ExecutionPolicy Bypass: sob Restricted o shell-panel vira pass-through, documentado em Known limitations.\n- Tab colado dispara completion: limitacao documentada, nao achado novo (a menos que cause perda de texto).\n- SHELL_PANEL_SESSION herdado: documentado.\n- Specs Fig embutidos como JSON (Task 17)."
+  "maxRefutations": 36,
+  "projectRules": "- O terminal do usuario e o produto: stdout so recebe saida do shell e o dropdown; log so vai para arquivo com --verbose.\n- Raw mode, cursor e o modo de entrada do console voltam ao estado encontrado em toda saida (normal, erro, panic); o bit VT input volta exatamente ao valor do inicio.\n- Toda saida do PTY e nao confiavel: mensagens OSC 6973 so valem com o token da sessao (literal em __SP-Send); texto digitado no PTY nunca contem controle; texto desenhado no dropdown tem C0/C1/DEL/bidi trocados por '?'.\n- Indices do relatorio sao unidades UTF-16. Tab nunca perdido nem duplicado; sem relatorio util em 3 s o Tab vai para o PowerShell.\n- Dois modos de entrada seguem reading_line: modo prompt decodifica teclas (Tab, dropdown); modo programa (inclusive a inicializacao) liga ENABLE_VIRTUAL_TERMINAL_INPUT e escreve os bytes crus, agrupando teclas enfileiradas numa escrita (ConPTY le ESC solto no fim de uma escrita como Escape).\n- assets/shellIntegration.ps1, install.ps1, uninstall.ps1 e scripts/test-installer.ps1 sao ASCII puro (5.1 le script sem BOM como ANSI); o script de integracao nao imprime sobre a linha, nao muda $?/$LASTEXITCODE, nao usa -ExecutionPolicy Bypass, e guarda o PSConsoleHostReadLine original num closure criado em escopo FILHO (GetNewClosure no escopo global congela $PWD e preferencias).\n- install.ps1/uninstall.ps1 funcionam como arquivo e via irm | iex: param no nivel do script repassado com @PSBoundParameters (@args transforma -Switch:$false em true), corpo em script block filho, throw e nunca exit; o desinstalador so apaga pasta com o marcador .shell-panel-install.\n- vendor/crossterm e crossterm 0.28.1 com dois patches documentados em SHELL-PANEL-PATCH.md; nunca formatar nem corrigir lint do codigo vendorizado.\n- Codigo formatado (cargo fmt) e clippy sem avisos com -D warnings.",
+  "decisionsNotToRelitigate": "- Completar dentro da sessao do usuario via PSReadLine em vez de worker PowerShell separado.\n- Sem -ExecutionPolicy Bypass: sob Restricted o shell-panel vira pass-through (Known limitations).\n- Tab colado dispara completion: limitacao documentada.\n- SHELL_PANEL_SESSION herdado: documentado.\n- Specs Fig embutidos como JSON.\n- Token da sessao embutido como literal em __SP-Send (ameaca = saida de programas, nao codigo do usuario).\n- Dois modos de entrada (opcao 2 aprovada pelo usuario); nao propor responder DA1 pelo shell-panel nem entrada crua no modo prompt.\n- ConPTY so entrega F1-F12 (medido): nao acusar F13+ como defeito do shell-panel.\n- Aspa sem fechamento apaga o resto da linha na substituicao: e a semantica do PowerShell.",
+  "userState": "pwsh -NoProfile -File C:/Users/jonyd/Projetos/shell-panel/.claude/skills/shell-panel-review/scripts/user_state.ps1 -Save <arquivo> | -Compare <arquivo>"
 }

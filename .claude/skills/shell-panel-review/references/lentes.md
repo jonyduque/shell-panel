@@ -23,6 +23,15 @@ Armadilhas ja pagas:
 - O lexer e o merge ja tem 30+ testes: antes de dizer que um caso nao e tratado, procure o
   teste que o trata.
 
+### Armadilhas acrescentadas em 2026-10-02 (valem para correcao)
+- PowerShell: `GetNewClosure()` executado no escopo global copia todas as variaveis globais
+  (inclusive `$PWD` e preferencias) para o closure. Um closure que precisa ver a sessao viva tem de
+  ser criado num escopo filho. Teste o comportamento (cwd apos `Set-Location`), nao a presenca.
+- Reator: dois modos de entrada (`reading_line`). Procure teclas lidas num modo e processadas no
+  outro (troca de modo), e escritas que terminam num ESC solto (ConPTY le como Escape).
+- Windows: espera curta (`timeout`, `sleep`) dura no minimo ~16 ms; "so o que ja esta na fila" e
+  um poll sem espera.
+
 ## teste (por particao, worktree)
 
 **Pergunta:** qual teste desta particao nao consegue falhar, e qual regra declarada (README,
@@ -70,6 +79,12 @@ o prompt `PS `, envie bytes, `wait_for_text`, `screen()`). Rode com
 Primeira linha enviada a cada sessao: `Set-PSReadLineOption -HistorySaveStyle SaveNothing\r` -
 sem isso o rascunho grava no historico real do usuario.
 
+Padroes ja prontos no `tests/e2e_binary_test.rs`: `read_one_key` / `got_line` (um programa le uma
+tecla com `[Console]::ReadKey` e imprime `GOT-<tecla>-<modificadores>`), `answer_queries_until`
+(responde a toda pergunta DA1 como um terminal real), `warm_completion()` antes de um Tab
+cronometrado, `TempDir`, `drain(quiet, max)`. No modo programa so F1-F12 chegam (limite do
+ConPTY, medido).
+
 Cenarios minimos (a classe dos 5 defeitos que escaparam):
 - cada linha da tabela Keys, com dropdown aberto e fechado;
 - tecla digitada entre o Tab e a chegada do relatorio (rapido, sem esperar);
@@ -105,3 +120,22 @@ Para cada afirmacao verificavel (opcao, chave, default, tecla, caminho, limite, 
 mensagem de erro), abra o codigo e confira. Cite a frase literal do doc como trecho e o
 `arquivo:linha` do codigo que a contradiz. Planos em `docs/superpowers/` sao historicos: nao
 revise.
+
+## Particao installer (vale para as lentes por particao)
+
+- Nunca rode `install.ps1`/`uninstall.ps1` com os locais padrao. O teste e
+  `scripts/test-installer.ps1`, sempre lancado a partir do pwsh 7, com `-Shell pwsh` e
+  `-Shell powershell`; ele usa pastas temporarias e restaura o PATH. Rode `user_state.ps1 -Save`
+  antes e `-Compare` depois de cada execucao.
+- So UM teste do instalador por vez na maquina. O proprio `scripts/test-installer.ps1` garante
+  isso com o mutex `Global\shell-panel-installer-test` (um segundo espera e desiste sem tocar o
+  PATH); mesmo assim, nunca o rode a partir de agentes em paralelo.
+- Se ele recusar com "Refusing to run: a previous installer test left ...", uma execucao anterior
+  foi morta antes de restaurar o PATH. PARE e relate; nunca rode o comando de restauracao que ele
+  imprime: esse comando e para o usuario.
+- Prova de mutacao: `mutate.ps1 -Path install.ps1 ... -TestCommand 'pwsh -NoProfile -File
+  scripts/test-installer.ps1 -Shell pwsh'` (o teste imprime `test result:`).
+- Verifique os dois modos de execucao: arquivo (`-File`, parametros por nome, `-Switch:$false`) e
+  `irm | iex` (nada pode sobrar na sessao: variavel, funcao, `$ErrorActionPreference`, StrictMode).
+- Os .ps1 sao ASCII puro; emoji e ESC sao montados em tempo de execucao.
+- Workflows: `actionlint`; o publish tem de ser repetivel (release ja existente).

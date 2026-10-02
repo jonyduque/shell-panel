@@ -5,3 +5,6 @@
 
 # Worktrees created by Claude Code agents
 /.claude/worktrees/
+
+# Subagent-driven execution ledgers and briefs (see CLAUDE.md)
+/.superpowers/
