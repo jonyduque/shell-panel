@@ -278,17 +278,54 @@ fn request_report(term: &mut Terminal) -> ShellReport {
     report
 }
 
+fn count_of(raw: &[u8], needle: &str) -> usize {
+    let n = needle.as_bytes();
+    raw.windows(n.len()).filter(|w| *w == n).count()
+}
+
 #[test]
-fn test_report_still_works_when_the_global_variables_are_gone() {
+fn test_session_survives_a_script_that_clears_the_global_variables() {
     let (mut term, dir) = ready_shell("novars");
-    // A script run in the session may clear the global scope; the token must not live there.
-    // `__SP_OriginalReadLine` stays: the ReadLine wrapper still keeps the original there.
-    term.send(b"Remove-Variable * -Exclude '__SP_*' -Scope Global -ErrorAction SilentlyContinue; 'CLEAR' + 'ED'\r");
+    let rs = format!("\x1b]6973;{TOKEN};RS;");
+    let re = format!("\x1b]6973;{TOKEN};RE\x07");
+    // A script run in the session may clear the global scope; neither the token nor the original
+    // ReadLine may live there.
+    term.send(b"Remove-Variable * -Scope Global -ErrorAction SilentlyContinue; 'CLEAR' + 'ED'\r");
     assert!(term.wait_for_text("CLEARED", Duration::from_secs(15)));
+    let before = (count_of(&term.raw, &rs), count_of(&term.raw, &re));
+    // Enter ends the line (RE) and the next prompt starts a new one (RS).
+    term.send(b"'AFT' + 'ER'\r");
+    assert!(
+        term.wait_until(Duration::from_secs(15), |t| count_of(&t.raw, &rs)
+            > before.0
+            && count_of(&t.raw, &re) > before.1),
+        "no RE/RS after Enter, screen: {}",
+        term.screen()
+    );
     term.send(b"echo hi");
     assert!(term.wait_for_text("echo hi", Duration::from_secs(15)));
     let report = request_report(&mut term);
     assert_eq!(report.line, "echo hi");
+    drop(term);
+    remove_dir_when_released(&dir);
+}
+
+#[test]
+fn test_loading_the_script_twice_does_not_wrap_the_readline_twice() {
+    let (mut term, dir) = ready_shell("twice");
+    let file = dir.join("again.ps1");
+    std::fs::write(&file, script(TOKEN)).unwrap();
+    term.send(b"Invoke-Expression (Get-Content -Raw .\\again.ps1); 'LOAD' + 'ED'\r");
+    assert!(term.wait_for_text("LOADED", Duration::from_secs(20)));
+    let rs = format!("\x1b]6973;{TOKEN};RS;");
+    // The prompt after the load line sends its own RS; let it arrive before counting.
+    term.drain(Duration::from_millis(1500));
+    let before = count_of(&term.raw, &rs);
+    term.send(b"'ONE' + 'LINE'\r");
+    assert!(term.wait_for_text("ONELINE", Duration::from_secs(15)));
+    // Let any second marker arrive before counting.
+    term.drain(Duration::from_millis(1500));
+    assert_eq!(count_of(&term.raw, &rs) - before, 1, "one RS per prompt");
     drop(term);
     remove_dir_when_released(&dir);
 }

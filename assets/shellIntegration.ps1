@@ -24,14 +24,19 @@ function Global:__SP-Send([string]$payload) {
 # Mark the time PSReadLine spends reading a line. Unlike a prompt wrapper this survives the user
 # redefining `prompt` and does not change what the prompt function sees.
 if (Get-Command PSConsoleHostReadLine -ErrorAction Ignore) {
-    # Capturing our own wrapper on a second load would recurse until the stack overflows.
-    if (-not $Global:__SP_OriginalReadLine) {
-        $Global:__SP_OriginalReadLine = $function:PSConsoleHostReadLine
-    }
-    function Global:PSConsoleHostReadLine {
-        $cwd = if ($pwd.Provider.Name -eq 'FileSystem') { $pwd.ProviderPath } else { '' }
-        __SP-Send "RS;$(__SP-Escape $cwd)"
-        try { $Global:__SP_OriginalReadLine.Invoke() } finally { __SP-Send 'RE' }
+    # Wrapping our own wrapper on a second load would send every marker twice. The wrapper is
+    # recognised by the marker comment in its body, since no global variable may be relied on.
+    if (-not $function:PSConsoleHostReadLine.ToString().Contains('shell-panel-readline-wrapper')) {
+        $sp_original = $function:PSConsoleHostReadLine
+        # The original lives in the closure: a script that clears the global variables cannot
+        # take it away.
+        Set-Item -Path function:Global:PSConsoleHostReadLine -Value ({
+            # shell-panel-readline-wrapper
+            $cwd = if ($pwd.Provider.Name -eq 'FileSystem') { $pwd.ProviderPath } else { '' }
+            __SP-Send "RS;$(__SP-Escape $cwd)"
+            try { $sp_original.Invoke() } finally { __SP-Send 'RE' }
+        }.GetNewClosure())
+        Remove-Variable sp_original
     }
 }
 
