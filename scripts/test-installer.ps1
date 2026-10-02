@@ -390,6 +390,9 @@ try {
     }
 
     Write-Host "test result: ok. $script:passed passed; 0 failed"
+    # The last child exited 1 on purpose (a styled failure test). A host that ends with
+    # `exit $LASTEXITCODE`, like GitHub's pwsh steps, would report that as the run's result.
+    $global:LASTEXITCODE = 0
 } catch {
     Write-Host "[!] $($_.Exception.Message)"
     Write-Host "test result: FAILED. $script:passed passed; 1 failed"
