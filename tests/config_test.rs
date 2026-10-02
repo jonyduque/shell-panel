@@ -122,3 +122,13 @@ fn test_invalid_or_missing_explicit_file_is_reported() {
     assert_eq!(config, Config::default());
     assert_eq!(warnings.len(), 1);
 }
+
+#[test]
+fn test_sample_toml_loads_to_the_defaults_without_warnings() {
+    let path = std::env::temp_dir().join(format!("sp_sample_{}.toml", std::process::id()));
+    std::fs::write(&path, default_sample_toml()).unwrap();
+    let (config, warnings) = Config::load(Some(&path));
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(config, Config::default());
+    assert!(warnings.is_empty(), "warnings: {warnings:?}");
+}

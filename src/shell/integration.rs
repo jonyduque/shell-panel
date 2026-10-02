@@ -45,9 +45,15 @@ pub fn new_session_token() -> String {
         .collect()
 }
 
-/// The integration script for one session: the token assignment, then [`SCRIPT`].
+/// The integration script for one session: [`SCRIPT`] with the token written into `__SP-Send`
+/// as a literal, so no variable of the session holds it.
 pub fn script(token: &str) -> String {
-    format!("$Global:__SP_Token = '{token}'\n{SCRIPT}")
+    assert!(
+        !token.is_empty() && token.chars().all(|c| c.is_ascii_hexdigit()),
+        "the session token must be non-empty ASCII hex, got {} characters",
+        token.chars().count()
+    );
+    SCRIPT.replace("__SP_TOKEN__", token)
 }
 
 /// [`script`] as `-EncodedCommand` expects it: base64 of its UTF-16LE bytes.

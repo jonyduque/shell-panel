@@ -270,3 +270,11 @@ fn test_alt_enter_is_a_record_not_a_carriage_return() {
         b"\x1b[13;28;13;1;8;1_".to_vec()
     );
 }
+
+#[test]
+fn test_control_chords_for_space_and_brackets() {
+    for (c, byte) in [(' ', 0x00u8), ('[', 0x1b), (']', 0x1d)] {
+        let ev = make_key_event(KeyCode::Char(c), KeyModifiers::CONTROL, KeyEventKind::Press);
+        assert_eq!(encode_key_event(&ev), vec![byte], "Ctrl+{c:?}");
+    }
+}

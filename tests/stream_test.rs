@@ -46,6 +46,32 @@ fn test_split_prefix_and_st_terminator() {
 }
 
 #[test]
+fn test_split_st_terminator_after_a_readline_start() {
+    let mut term = HeadlessTerminal::new(80, 24);
+    let mut state = CommandState::new(TOKEN);
+    let mut residual = Vec::new();
+    ingest_pty_chunk(
+        format!("\x1b]6973;{TOKEN};RS;C:/p\x07").as_bytes(),
+        &mut term,
+        &mut state,
+        &mut residual,
+    );
+    assert!(state.reading_line);
+
+    let first = ingest_pty_chunk(
+        format!("a\x1b]6973;{TOKEN};RE\x1b").as_bytes(),
+        &mut term,
+        &mut state,
+        &mut residual,
+    );
+    let second = ingest_pty_chunk(b"\\b", &mut term, &mut state, &mut residual);
+
+    assert_eq!(first, b"a");
+    assert_eq!(second, b"b");
+    assert!(!state.reading_line);
+}
+
+#[test]
 fn test_unterminated_message_is_not_buffered_forever() {
     let mut term = HeadlessTerminal::new(80, 24);
     let mut state = CommandState::new(TOKEN);

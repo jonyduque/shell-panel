@@ -57,15 +57,6 @@ fn test_detect_shell_prefers_pwsh_on_path() {
     let _ = std::fs::remove_dir_all(&without);
 }
 
-#[test]
-fn test_conpty_session_spawn_and_resize() {
-    let shell = detect_shell(None);
-    let mut session = ConPtySession::spawn(shell, 80, 24, SpawnOptions { no_profile: true })
-        .expect("Failed to create ConPTY session");
-    assert!(session.resize(120, 40).is_ok());
-    let _ = session.child.kill();
-}
-
 #[tokio::test]
 async fn test_watch_exit_reports_code_although_pty_output_stays_open() {
     let ConPtySession { pair, child, .. } = ConPtySession::spawn(

@@ -39,6 +39,10 @@ repository = "https://github.com/crossterm-rs/crossterm"
 [package.metadata.docs.rs]
 all-features = true
 
+[lints.rust]
+unexpected_cfgs = "allow"
+dead_code = "allow"
+
 [lib]
 name = "crossterm"
 path = "src/lib.rs"

@@ -190,15 +190,34 @@ fn test_session_tokens_are_fresh_hex() {
 }
 
 #[test]
-fn test_script_carries_the_token_before_the_integration() {
+fn test_script_embeds_the_token_in_the_send_function() {
     let s = script(TOKEN);
-    let assignment = format!("$Global:__SP_Token = '{TOKEN}'");
-    assert!(
-        s.starts_with(&assignment),
-        "script starts with: {:?}",
-        &s[..80.min(s.len())]
-    );
+    let start = s.find("function Global:__SP-Send").expect("__SP-Send");
+    let body = &s[start..];
+    let body = &body[..body.find("\n}").expect("end of __SP-Send")];
+    assert!(body.contains(TOKEN), "__SP-Send body: {body}");
+    assert!(!s.contains("$Global:__SP_Token"));
+    assert!(!s.contains("__SP_TOKEN__"));
     assert!(s.contains("Set-PSReadLineKeyHandler"));
+}
+
+#[test]
+#[should_panic(expected = "hex")]
+fn test_script_rejects_a_token_that_is_not_hex() {
+    script("x'; Remove-Item *; '");
+}
+
+#[test]
+#[should_panic(expected = "hex")]
+fn test_script_rejects_an_empty_token() {
+    script("");
+}
+
+#[test]
+fn test_debug_output_does_not_leak_the_token() {
+    let text = format!("{:?}", CommandState::new(TOKEN));
+    assert!(!text.contains(TOKEN), "{text}");
+    assert!(text.contains("<redacted>"), "{text}");
 }
 
 fn report_of(line: &str) -> ShellReport {

@@ -362,3 +362,33 @@ fn test_session_marks_itself_for_nested_start_detection() {
     term.send(b"exit\r");
     assert_eq!(term.wait_exit(STEP), Some(0));
 }
+
+#[test]
+fn test_console_resize_reaches_the_shell() {
+    let dir = temp_dir("resize");
+    let mut term = Terminal::shell_panel(&dir);
+    let name = dir.file_name().unwrap().to_str().unwrap().to_string();
+    assert!(
+        term.wait_for_text(&name, START),
+        "screen: {}",
+        term.screen()
+    );
+    term.quiet_session();
+    term.resize(100, 40);
+    // Concatenation: the echoed command cannot satisfy the wait. Retried, since the resize
+    // event travels through shell-panel and the console before the shell sees the new size.
+    let ask = b"'SZ=' + $Host.UI.RawUI.WindowSize.Width + 'x' + $Host.UI.RawUI.WindowSize.Height\r";
+    let mut seen = false;
+    for _ in 0..5 {
+        term.send(ask);
+        if term.wait_until(Duration::from_secs(5), |t| {
+            t.screen().lines().any(|l| l.trim() == "SZ=100x40")
+        }) {
+            seen = true;
+            break;
+        }
+    }
+    assert!(seen, "screen: {}", term.screen());
+    term.send(b"exit\r");
+    assert_eq!(term.wait_exit(STEP), Some(0));
+}

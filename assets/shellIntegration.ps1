@@ -1,5 +1,5 @@
-# shell-panel integration for PowerShell with PSReadLine 2.x. Passed with -EncodedCommand, after a
-# line that sets $Global:__SP_Token to this session's secret.
+# shell-panel integration for PowerShell with PSReadLine 2.x. Passed with -EncodedCommand, with the
+# session secret written into __SP-Send as a literal (see integration.rs).
 # Messages to shell-panel: ESC ] 6973;<token>;<payload> BEL with payloads RS;<cwd>, RE and
 # CMP;<json>. Output of programs cannot know the token, so it cannot forge a message.
 
@@ -18,7 +18,7 @@ function Global:__SP-Escape([string]$value) {
 }
 
 function Global:__SP-Send([string]$payload) {
-    [Console]::Write("$([char]0x1b)]6973;$($Global:__SP_Token);$payload$([char]0x07)")
+    [Console]::Write("$([char]0x1b)]6973;__SP_TOKEN__;$payload$([char]0x07)")
 }
 
 # Mark the time PSReadLine spends reading a line. Unlike a prompt wrapper this survives the user

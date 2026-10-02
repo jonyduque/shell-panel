@@ -17,7 +17,7 @@ fn test_embedded_script_defines_the_protocol() {
         "'RE'",
         "CMP;",
         "Ctrl+Alt+Shift+F12",
-        "$($Global:__SP_Token)",
+        "6973;__SP_TOKEN__;",
     ] {
         assert!(SCRIPT.contains(marker), "script lacks {marker}");
     }

@@ -2,7 +2,7 @@ use crate::shell::osc::OscEvent;
 use crate::shell::report::ShellReport;
 
 /// What shell-panel knows about the shell from its integration messages.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Default, Clone, PartialEq, Eq)]
 pub struct CommandState {
     /// Secret of this session; messages without it are ignored (see `new_session_token`).
     pub token: String,
@@ -18,6 +18,20 @@ pub struct CommandState {
     awaiting_report: bool,
 }
 
+/// Written by hand so the session secret never reaches a log or a panic message.
+impl std::fmt::Debug for CommandState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CommandState")
+            .field("token", &"<redacted>")
+            .field("cwd", &self.cwd)
+            .field("reading_line", &self.reading_line)
+            .field("report", &self.report)
+            .field("outstanding_reports", &self.outstanding_reports)
+            .field("awaiting_report", &self.awaiting_report)
+            .finish()
+    }
+}
+
 impl CommandState {
     pub fn new(token: impl Into<String>) -> Self {
         Self {
@@ -28,7 +42,7 @@ impl CommandState {
 
     /// A Tab wrote a report request to the shell and now waits for its answer.
     pub fn request_report(&mut self) {
-        self.outstanding_reports += 1;
+        self.outstanding_reports = self.outstanding_reports.saturating_add(1);
         self.awaiting_report = true;
     }
 

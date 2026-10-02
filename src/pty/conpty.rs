@@ -58,17 +58,6 @@ impl ConPtySession {
 
         Ok(Self { pair, child, token })
     }
-
-    /// Resizes the PTY terminal window dimensions.
-    pub fn resize(&self, cols: u16, rows: u16) -> Result<()> {
-        self.pair.master.resize(PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        })?;
-        Ok(())
-    }
 }
 
 /// Waits for the shell on a dedicated thread and reports its exit code.

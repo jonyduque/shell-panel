@@ -106,6 +106,19 @@ impl Terminal {
         self.writer.flush().expect("flush pty");
     }
 
+    /// Resizes the console, the way the reactor's resize handling does on the shell's side.
+    pub fn resize(&mut self, cols: u16, rows: u16) {
+        self._master
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .expect("resize");
+        self.parser.set_size(rows, cols);
+    }
+
     pub fn wait_exit(&mut self, timeout: Duration) -> Option<u32> {
         let start = Instant::now();
         while start.elapsed() < timeout {

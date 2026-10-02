@@ -210,6 +210,9 @@ impl App {
 
                     if let Some(report) = command_state.report.take() {
                         // `CommandState` keeps a report only when it answers the Tab that waits now.
+                        // Two sources say "a Tab waits": `CommandState::awaiting_report` and
+                        // `report_deadline`. They must change together; this guard makes
+                        // `abandon_report` merely defensive.
                         if report_deadline.take().is_some() {
                             debug!(matches = report.matches.len(), "shell report arrived");
                             let engine = engine.clone();
