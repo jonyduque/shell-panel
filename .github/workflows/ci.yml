@@ -18,6 +18,10 @@ jobs:
         run: rustup component add rustfmt clippy
       - name: Gate
         shell: pwsh
+        env:
+          # The end-to-end tests start a PowerShell session each; 19 at once on a 4-CPU runner
+          # pushed the first completion past the 3 s report timeout (v0.1.0 and v0.2.0 runs).
+          RUST_TEST_THREADS: 2
         run: ./.claude/skills/shell-panel-review/scripts/verify.ps1
 
   installer:
