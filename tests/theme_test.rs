@@ -31,7 +31,7 @@ fn test_format_suggestion_line_selected_highlight() {
         .with_kind(SuggestionKind::Subcommand);
     let formatted = format_suggestion_line(&sug, true, 50);
 
-    assert!(formatted.starts_with("\x1b[7m"));
+    assert!(formatted.starts_with(&Theme::default().selected_start));
     assert!(formatted.ends_with("\x1b[0m"));
     assert!(formatted.contains("> "));
     assert!(formatted.contains("🔹 "));
@@ -55,13 +55,14 @@ fn test_format_suggestion_line_unselected_description_dim() {
 #[test]
 fn test_theme_default_values() {
     let theme = Theme::default();
-    assert_eq!(theme.selected_start, "\x1b[7m");
+    let colors = Config::default().colors;
+    assert_ne!(theme.selected_start, "\x1b[7m");
     assert_eq!(theme.selected_end, "\x1b[0m");
-    assert_eq!(theme.desc_start, "\x1b[90m");
+    assert!(!theme.desc_start.is_empty());
     assert_eq!(theme.desc_end, "\x1b[0m");
     assert_eq!(theme.unselected_fg_start, "");
-    assert_eq!(theme.selected_prefix, "> ");
-    assert_eq!(theme.unselected_prefix, "  ");
+    assert_eq!(theme.selected_prefix, colors.selected_prefix);
+    assert_eq!(theme.unselected_prefix, colors.unselected_prefix);
     assert_eq!(theme.icons, IconConfig::default());
 }
 
@@ -182,7 +183,7 @@ fn test_control_characters_in_suggestion_text_are_drawn_inert() {
     let theme = Theme::default();
     let sug = Suggestion::new(
         "a",
-        "a\u{1b}[1;1HPWNED",
+        "a\u{1b}[1;1HPWNED\u{1}\u{7f}\u{85}",
         Some("x\u{1b}]52;c;aWV4\u{7}y\u{9b}2Jz".to_string()),
         50,
     );
@@ -193,7 +194,89 @@ fn test_control_characters_in_suggestion_text_are_drawn_inert() {
         assert!(!line.contains('\u{7}'), "{line:?}");
         assert!(!line.contains('\u{9b}'), "{line:?}");
         assert!(line.contains("PWNED"), "{line:?}");
+
+        let mut plain = String::new();
+        let mut chars = line.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '\u{1b}' && chars.peek() == Some(&'[') {
+                let mut seq = String::new();
+                chars.next();
+                while let Some(&n) = chars.peek() {
+                    if n.is_ascii_digit() || n == ';' {
+                        seq.push(n);
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+                if chars.peek() == Some(&'m') {
+                    chars.next();
+                    continue;
+                }
+                plain.push(c);
+                plain.push('[');
+                plain.push_str(&seq);
+                continue;
+            }
+            plain.push(c);
+        }
+        assert!(!plain.chars().any(|c| c.is_control()), "{plain:?}");
     }
+}
+
+#[test]
+fn test_bidi_and_line_separators_are_drawn_inert() {
+    let sug = Suggestion::new(
+        "a",
+        "a\u{202e}b\u{2028}c",
+        Some("d\u{200f}e\u{2066}f\u{2069}g\u{2029}h\u{200e}i".into()),
+        50,
+    );
+    let theme = Theme::default();
+    let line = format_suggestion_line_with_theme(&sug, true, 80, &theme);
+    assert!(line.contains("a?b?c"), "{line:?}");
+    assert!(line.contains("d?e?f?g?h?i"), "{line:?}");
+}
+
+#[test]
+fn test_truncation_measures_the_prefix_as_a_string() {
+    // U+1F3F7 U+FE0F is one grapheme drawn two columns wide.
+    assert_eq!(
+        truncate_to_width("\u{1f3f7}\u{fe0f}ab", 2),
+        "\u{1f3f7}\u{fe0f}"
+    );
+    assert_eq!(
+        truncate_to_width("\u{1f3f7}\u{fe0f}ab", 3),
+        "\u{1f3f7}\u{fe0f}a"
+    );
+}
+
+#[test]
+fn test_default_option_icon_rows_fit_max_width() {
+    let theme = Theme::default();
+    assert_eq!(theme.icons.option, "\u{1f3f7}\u{fe0f}  ");
+    let sug = Suggestion::new(
+        "--verbose-flag-name",
+        "--verbose-flag-name",
+        Some("desc".into()),
+        50,
+    )
+    .with_kind(SuggestionKind::Option);
+    for selected in [false, true] {
+        let line = format_suggestion_line_with_theme(&sug, selected, 10, &theme);
+        let mut screen = vt100::Parser::new(1, 40, 0);
+        screen.process(line.as_bytes());
+        let drawn = screen.screen().contents();
+        assert!(
+            unicode_width::UnicodeWidthStr::width(drawn.trim_end()) <= 10,
+            "{selected} {drawn:?}"
+        );
+    }
+}
+
+#[test]
+fn test_default_theme_derives_from_default_config() {
+    assert_eq!(Theme::default(), Theme::from_config(&Config::default()));
 }
 
 #[test]

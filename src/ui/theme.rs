@@ -1,16 +1,10 @@
 use std::borrow::Cow;
 
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_width::UnicodeWidthStr;
 
 use crate::core::config::{Config, IconConfig};
 use crate::engine::provider::{Suggestion, SuggestionKind};
 use crate::ui::color::{parse_color_bg, parse_color_fg};
-
-/// Prefix string displayed before the active/selected suggestion item.
-pub const SELECTED_PREFIX: &str = "> ";
-
-/// Prefix string displayed before unselected suggestion items.
-pub const UNSELECTED_PREFIX: &str = "  ";
 
 /// UI theme styling definitions and helpers.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,36 +21,11 @@ pub struct Theme {
 
 impl Default for Theme {
     fn default() -> Self {
-        Self {
-            selected_start: "\x1b[7m".to_string(),
-            selected_end: "\x1b[0m".to_string(),
-            desc_start: "\x1b[90m".to_string(),
-            desc_end: "\x1b[0m".to_string(),
-            unselected_fg_start: String::new(),
-            selected_prefix: SELECTED_PREFIX.to_string(),
-            unselected_prefix: UNSELECTED_PREFIX.to_string(),
-            icons: IconConfig::default(),
-        }
+        Self::from_config(&Config::default())
     }
 }
 
 impl Theme {
-    /// Prefix string displayed before the active/selected suggestion item.
-    pub const SELECTED_PREFIX: &'static str = SELECTED_PREFIX;
-
-    /// Prefix string displayed before unselected suggestion items.
-    pub const UNSELECTED_PREFIX: &'static str = UNSELECTED_PREFIX;
-
-    /// Formats a line or text segment with reverse video (invert) ANSI escape sequence.
-    pub fn format_selected(text: &str) -> String {
-        format!("\x1b[7m{}\x1b[0m", text)
-    }
-
-    /// Formats description text with dim / faint bright black ANSI escape sequence.
-    pub fn format_description(text: &str) -> String {
-        format!("\x1b[90m{}\x1b[0m", text)
-    }
-
     /// Constructs a `Theme` from loaded `Config`.
     pub fn from_config(config: &Config) -> Self {
         let is_invert = config.colors.selected_bg.eq_ignore_ascii_case("invert")
@@ -107,16 +76,6 @@ impl Theme {
             SuggestionKind::Other => &self.icons.other,
         }
     }
-
-    /// Formats selected text using this theme's selected styling.
-    pub fn format_selected_line(&self, text: &str) -> String {
-        format!("{}{}{}", self.selected_start, text, self.selected_end)
-    }
-
-    /// Formats description text using this theme's description styling.
-    pub fn format_description_text(&self, text: &str) -> String {
-        format!("{}{}{}", self.desc_start, text, self.desc_end)
-    }
 }
 
 /// Formats a suggestion into a styled, aligned, padded/truncated line using the default theme.
@@ -141,10 +100,23 @@ pub fn format_suggestion_line_with_theme(
     )
 }
 
-/// Replaces control characters (C0, DEL, C1) with `?` so suggestion text cannot inject
+/// Replaces control characters (C0, DEL, C1) and bidi/line-separator controls with `?` so suggestion text cannot inject
 /// terminal escape sequences when drawn.
 fn inert(text: &str) -> Cow<'_, str> {
-    let is_control = |c: char| c < ' ' || c == '\u{7f}' || ('\u{80}'..='\u{9f}').contains(&c);
+    let is_control = |c: char| {
+        c < ' '
+            || c == '\u{7f}'
+            || ('\u{80}'..='\u{9f}').contains(&c)
+            || matches!(
+                c,
+                '\u{200e}'
+                    | '\u{200f}'
+                    | '\u{202a}'..='\u{202e}'
+                    | '\u{2066}'..='\u{2069}'
+                    | '\u{2028}'
+                    | '\u{2029}'
+            )
+    };
     if text.chars().any(is_control) {
         Cow::Owned(
             text.chars()
@@ -264,16 +236,16 @@ pub fn format_suggestion_line_with_theme_and_min_width(
 
 /// Truncates string so that its visible unicode column width does not exceed `max_width`.
 pub fn truncate_to_width(s: &str, max_width: usize) -> String {
-    let mut current_width = 0;
     let mut out = String::new();
 
     for c in s.chars() {
-        let w = c.width().unwrap_or(0);
-        if current_width + w > max_width {
+        out.push(c);
+        // Measure the whole prefix: a char can widen its predecessor (U+FE0F makes the
+        // preceding symbol two columns wide).
+        if UnicodeWidthStr::width(out.as_str()) > max_width {
+            out.pop();
             break;
         }
-        out.push(c);
-        current_width += w;
     }
 
     out

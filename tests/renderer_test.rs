@@ -2,7 +2,7 @@ use shell_panel::engine::provider::Suggestion;
 use shell_panel::ui::patch::restore_line;
 use shell_panel::ui::renderer::{DropdownLayout, Renderer};
 use shell_panel::ui::suggestion_state::SuggestionState;
-use shell_panel::ui::theme::{Theme, SELECTED_PREFIX, UNSELECTED_PREFIX};
+use shell_panel::ui::theme::Theme;
 use shell_panel::vt::emulator::HeadlessTerminal;
 
 #[test]
@@ -153,9 +153,10 @@ fn test_render_dropdown_below_cursor_and_ansi_sequences() {
     assert!(rendered.contains("\x1b[u"), "must restore cursor position");
     assert!(rendered.contains("\x1b[?25h"), "must show cursor");
 
-    // Verify active line inverted highlight (\x1b[7m)
+    // Verify the active line carries the default theme's selection style
+    let selected_start = Theme::default().selected_start;
     assert!(
-        rendered.contains("\x1b[7m"),
+        rendered.contains(&selected_start),
         "must contain highlight sequence for active item"
     );
 
@@ -257,21 +258,16 @@ fn test_clear_dropdown_restores_terminal_lines() {
 }
 
 #[test]
-fn test_theme_constants_and_helpers() {
-    assert_eq!(SELECTED_PREFIX, "> ");
-    assert_eq!(UNSELECTED_PREFIX, "  ");
-    assert_eq!(Theme::SELECTED_PREFIX, "> ");
-    assert_eq!(Theme::UNSELECTED_PREFIX, "  ");
-
-    let sel = Theme::format_selected("hello");
-    assert!(sel.starts_with("\x1b[7m"));
-    assert!(sel.ends_with("\x1b[0m"));
-    assert!(sel.contains("hello"));
-
-    let desc = Theme::format_description("help text");
-    assert!(desc.starts_with("\x1b[90m"));
-    assert!(desc.ends_with("\x1b[0m"));
-    assert!(desc.contains("help text"));
+fn test_render_dropdown_fits_exactly_below_when_wanted_equals_below() {
+    let term = HeadlessTerminal::new(80, 24);
+    let mut state = SuggestionState::new(5);
+    state.set_suggestions(many(5));
+    let mut out = Vec::new();
+    let layout = Renderer::render_dropdown(&state, &term, &Theme::default(), 0, 18, &mut out)
+        .unwrap()
+        .expect("dropdown drawn");
+    assert_eq!(layout.start_row, 19);
+    assert_eq!(layout.row_count, 5);
 }
 
 fn many(n: usize) -> Vec<Suggestion> {

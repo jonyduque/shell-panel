@@ -16,6 +16,13 @@ fn test_vt_headless_basic_processing_and_cursor() {
     vt.resize(120, 40);
     assert_eq!(vt.cols, 120);
     assert_eq!(vt.rows, 40);
+    assert_eq!(vt.screen().size(), (40, 120));
+
+    vt.process(b"\x1b[3;5Habc");
+    let screen = vt.screen();
+    assert_eq!(screen.cell(2, 4).unwrap().contents(), "a");
+    assert_eq!(screen.cell(2, 5).unwrap().contents(), "b");
+    assert_eq!(screen.cell(2, 6).unwrap().contents(), "c");
 }
 
 #[test]
