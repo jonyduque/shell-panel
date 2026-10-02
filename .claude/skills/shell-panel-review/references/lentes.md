@@ -130,6 +130,9 @@ revise.
 - So UM teste do instalador por vez na maquina. O proprio `scripts/test-installer.ps1` garante
   isso com o mutex `Global\shell-panel-installer-test` (um segundo espera e desiste sem tocar o
   PATH); mesmo assim, nunca o rode a partir de agentes em paralelo.
+- Se ele recusar com "Refusing to run: a previous installer test left ...", uma execucao anterior
+  foi morta antes de restaurar o PATH. PARE e relate; nunca rode o comando de restauracao que ele
+  imprime: esse comando e para o usuario.
 - Prova de mutacao: `mutate.ps1 -Path install.ps1 ... -TestCommand 'pwsh -NoProfile -File
   scripts/test-installer.ps1 -Shell pwsh'` (o teste imprime `test result:`).
 - Verifique os dois modos de execucao: arquivo (`-File`, parametros por nome, `-Switch:$false`) e

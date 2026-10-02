@@ -87,6 +87,8 @@ const SAFETY = `SEGURANCA - a maquina do usuario nao e fixture de teste:
   -TerminalFragmentDir temporarios.
 - So UM teste do instalador por vez na maquina: o test-installer.ps1 segura o mutex
   Global\\shell-panel-installer-test; nunca o rode a partir de agentes em paralelo.
+- Se o test-installer.ps1 recusar com "Refusing to run: a previous installer test left ...",
+  PARE e relate; NUNCA rode o comando de restauracao que ele imprime (e para o usuario).
 - NUNCA escreva no Path de HKCU\\Environment, no historico do PSReadLine, em fragmentos do Windows
   Terminal, em %LOCALAPPDATA%\\Programs\\shell-panel ou em %USERPROFILE%\\.config\\shell-panel*.
 - Antes e depois de rodar sessoes PowerShell ou o teste do instalador:
