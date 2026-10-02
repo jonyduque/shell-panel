@@ -29,14 +29,18 @@ On a typical machine the default path is `C:\Users\<you>\.config\shell-panel.tom
 `--print-default-config` prints a commented file with every key at its default value:
 
 ```powershell
-# PowerShell 7
+# PowerShell 7 or Windows PowerShell 5.1
 New-Item -ItemType Directory -Force "$HOME\.config" | Out-Null
-shell-panel --print-default-config > "$HOME\.config\shell-panel.toml"
+# Decode shell-panel's output as UTF-8 (the default is the OEM code page, which turns the emoji into "?"),
+# and write the file as UTF-8 without a BOM. Works in PowerShell 7 and Windows PowerShell 5.1.
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+[IO.File]::WriteAllText("$HOME\.config\shell-panel.toml", (shell-panel --print-default-config | Out-String), [Text.UTF8Encoding]::new($false))
 ```
 
 The file must be **UTF-8**. In Windows PowerShell 5.1 the `>` operator writes UTF-16, which
-shell-panel cannot parse; there, run the command from PowerShell 7 or paste the printed text into
-an editor and save it as UTF-8.
+shell-panel cannot parse, and the default output decoding replaces the emoji with `?`; the
+snippet above sets the console decoding to UTF-8 and writes the file without a BOM, so it works
+in both shells.
 
 ## How the file is loaded
 

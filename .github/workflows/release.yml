@@ -91,7 +91,7 @@ jobs:
           pattern: zip-*
           path: dist
           merge-multiple: true
-      - name: Create release
+      - name: Create or update release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -100,8 +100,15 @@ jobs:
           if ($zips.Count -ne 2) { throw "expected 2 zips, found $($zips.Count)" }
           $zips | ForEach-Object { '{0}  {1}' -f (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } |
               Set-Content -LiteralPath dist/SHA256SUMS.txt -Encoding ascii
-          $arguments = @($env:GITHUB_REF_NAME) + $zips.FullName + @('dist/SHA256SUMS.txt', 'install.ps1', 'uninstall.ps1',
-              '--repo', $env:GITHUB_REPOSITORY, '--title', $env:GITHUB_REF_NAME, '--generate-notes')
-          if ($env:GITHUB_REF_NAME -like '*-*') { $arguments += '--prerelease' }
-          gh release create @arguments
-          if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
+          $assets = @($zips.FullName) + @('dist/SHA256SUMS.txt', 'install.ps1', 'uninstall.ps1')
+          # A re-run (for example after a failed step) finds the release already there: upload over it.
+          gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+              gh release upload $env:GITHUB_REF_NAME @assets --repo $env:GITHUB_REPOSITORY --clobber
+              if ($LASTEXITCODE -ne 0) { throw "gh release upload failed ($LASTEXITCODE)" }
+          } else {
+              $arguments = @($env:GITHUB_REF_NAME) + $assets + @('--repo', $env:GITHUB_REPOSITORY, '--title', $env:GITHUB_REF_NAME, '--generate-notes')
+              if ($env:GITHUB_REF_NAME -like '*-*') { $arguments += '--prerelease' }
+              gh release create @arguments
+              if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
+          }

@@ -13,6 +13,8 @@
     Default: %LOCALAPPDATA%\Programs\shell-panel.
 .PARAMETER ZipPath
     Testing only: install this local zip (requires -ChecksumsPath) instead of downloading.
+.PARAMETER ApiUri
+    Testing only: the URI of the latest-release lookup, instead of the GitHub API's.
 .PARAMETER TerminalFragmentDir
     Testing only: where the Windows Terminal profile fragment is written.
 #>
@@ -22,7 +24,8 @@ param(
     [string]$InstallDir,
     [string]$ZipPath,
     [string]$ChecksumsPath,
-    [string]$TerminalFragmentDir
+    [string]$TerminalFragmentDir,
+    [string]$ApiUri
 )
 # The parameters are bound here and handed to a script block that runs in a child scope: piped
 # through `iex` a script runs in the caller's scope, and the block keeps its variables, functions
@@ -34,6 +37,7 @@ param(
         [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'Programs\shell-panel'),
         [string]$ZipPath,
         [string]$ChecksumsPath,
+        [string]$ApiUri,
         [string]$TerminalFragmentDir = (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows Terminal\Fragments\shell-panel')
     )
     Set-StrictMode -Version Latest
@@ -48,6 +52,7 @@ param(
     $ProgressPreference = 'SilentlyContinue'
 
     $repo = 'jonyduque/shell-panel'
+    if (-not $ApiUri) { $ApiUri = "https://api.github.com/repos/$repo/releases/latest" }
     # Fixed, so that reinstalling updates the same Windows Terminal profile.
     $profileGuid = '{b6f3a6a8-5d0e-4c55-9a5a-3e7c1f2d9b41}'
 
@@ -58,6 +63,19 @@ param(
             'AMD64' { return 'x64' }
             'ARM64' { return 'arm64' }
             default { throw "shell-panel has no build for processor architecture '$arch' (only x64 and ARM64)." }
+        }
+    }
+
+    function Get-LatestVersion([string]$uri) {
+        try {
+            return (Invoke-RestMethod -UseBasicParsing -Uri $uri).tag_name
+        } catch {
+            $detail = $_.Exception.Message
+            $status = try { [int]$_.Exception.Response.StatusCode } catch { 0 }
+            $cause = if ($status -eq 403 -or $status -eq 429 -or $detail -match 'rate limit') {
+                'GitHub refused the request (HTTP 403 or "rate limit": the API allows few anonymous requests per hour). '
+            } else { '' }
+            throw "Could not look up the latest shell-panel release: $cause($detail) Pass -Version (for example -Version 0.2.0) to skip the lookup. Nothing was installed."
         }
     }
 
@@ -113,6 +131,7 @@ param(
     }
 
     $arch = Get-Arch
+    $savedProtocol = $null
     $work = Join-Path ([IO.Path]::GetTempPath()) ('shell-panel-install-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $work | Out-Null
     try {
@@ -121,10 +140,12 @@ param(
             $zip = (Resolve-Path -LiteralPath $ZipPath).Path
             $sums = (Resolve-Path -LiteralPath $ChecksumsPath).Path
         } else {
-            [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+            # Restored in the finally: iex runs this in the caller's session, where the setting would outlive it.
+            $savedProtocol = [Net.ServicePointManager]::SecurityProtocol
+            [Net.ServicePointManager]::SecurityProtocol = $savedProtocol -bor [Net.SecurityProtocolType]::Tls12
             if (-not $Version) {
                 Write-Host '[*] Looking up the latest release'
-                $Version = (Invoke-RestMethod -UseBasicParsing -Uri "https://api.github.com/repos/$repo/releases/latest").tag_name
+                $Version = Get-LatestVersion $ApiUri
             }
             $Version = $Version -replace '^v', ''
             $name = "shell-panel-$Version-$arch.zip"
@@ -193,6 +214,7 @@ param(
         Write-Host ''
         Write-Host '[i] Open the "PowerShell (shell-panel)" profile in Windows Terminal, or run shell-panel in a new terminal window.'
     } finally {
+        if ($null -ne $savedProtocol) { [Net.ServicePointManager]::SecurityProtocol = $savedProtocol }
         Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
     }
 } @PSBoundParameters

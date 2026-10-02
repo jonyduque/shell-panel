@@ -166,6 +166,43 @@ try {
         Assert (-not (Test-Path -LiteralPath $configFile)) 'uninstall -Purge removes the configuration'
     } finally { $env:USERPROFILE = $savedProfile }
 
+    Write-Host '== release lookup failure'
+    # -ApiUri points the latest-release lookup at a closed local port: the failure must say what
+    # to do, since the usual real cause (the GitHub API rate limit) cannot be reproduced here.
+    $lookup = "& '$(Join-Path $root 'install.ps1')' -InstallDir '$installDir' -TerminalFragmentDir '$fragmentDir' -ApiUri 'http://127.0.0.1:9/'"
+    Assert ((Invoke-CommandLine $lookup) -ne 0) 'a failed release lookup fails the install'
+    Assert (($script:lastOutput -join "`n") -match '-Version') 'the lookup failure suggests -Version'
+    Assert (-not (Test-Path -LiteralPath $installedExe)) 'a failed release lookup installs nothing'
+
+    Write-Host '== zip missing from SHA256SUMS.txt'
+    $other = Join-Path $work 'OTHER_SHA256SUMS.txt'
+    (('1' * 64) + '  some-other-file.zip') | Set-Content -LiteralPath $other -Encoding ascii
+    $noEntry = @('-InstallDir', $installDir, '-TerminalFragmentDir', $fragmentDir, '-ZipPath', $ZipPath, '-ChecksumsPath', $other)
+    Assert ((Invoke-Script 'install.ps1' $noEntry) -ne 0) 'a SHA256SUMS.txt without the zip line fails the install'
+    Assert (-not (Test-Path -LiteralPath $installedExe)) 'a missing checksum line installs nothing'
+    Assert ((Get-PathCount) -eq 0) 'a missing checksum line leaves PATH alone'
+
+    Write-Host '== PATH stored as REG_SZ'
+    # The uninstall test left a user file here, which would make install refuse the folder.
+    Remove-Item -LiteralPath (Join-Path $installDir 'notes.txt') -Force
+    $envKey.SetValue('Path', 'C:\sp-installer-test-plain', [Microsoft.Win32.RegistryValueKind]::String)
+    Assert ((Invoke-Script 'install.ps1' $install) -eq 0) 'install exits 0 with a REG_SZ PATH'
+    Assert ($envKey.GetValueKind('Path') -eq [Microsoft.Win32.RegistryValueKind]::String) 'a REG_SZ PATH stays REG_SZ'
+    Assert (((Get-RawUserPath) -split ';') -contains 'C:\sp-installer-test-plain') 'the REG_SZ PATH keeps its entry'
+    Assert ((Get-PathCount) -eq 1) 'the install dir is added to the REG_SZ PATH'
+    Assert ((Invoke-Script 'uninstall.ps1' $uninstall) -eq 0) 'uninstall exits 0 with a REG_SZ PATH'
+    Assert ($envKey.GetValueKind('Path') -eq [Microsoft.Win32.RegistryValueKind]::String) 'a REG_SZ PATH is still REG_SZ after uninstall'
+    Assert ((Get-RawUserPath) -eq 'C:\sp-installer-test-plain') 'uninstall restores the REG_SZ PATH value'
+
+    Write-Host '== PATH value missing'
+    $envKey.DeleteValue('Path', $false)
+    Assert ((Invoke-Script 'install.ps1' $install) -eq 0) 'install exits 0 without a PATH value'
+    Assert (($envKey.GetValueNames() -contains 'Path') -and $envKey.GetValueKind('Path') -eq [Microsoft.Win32.RegistryValueKind]::ExpandString) 'a missing PATH is created as REG_EXPAND_SZ'
+    Assert ((Get-RawUserPath) -eq $installDir) 'the created PATH holds only the install dir'
+    Assert ((Invoke-Script 'uninstall.ps1' $uninstall) -eq 0) 'uninstall exits 0 after creating the PATH'
+    # Documented behaviour: the value stays, empty, instead of being deleted.
+    Assert (($envKey.GetValueNames() -contains 'Path') -and (Get-RawUserPath) -eq '') 'uninstall leaves the created PATH empty'
+
     Write-Host "test result: ok. $script:passed passed; 0 failed"
 } catch {
     Write-Host "[!] $($_.Exception.Message)"

@@ -103,7 +103,10 @@ shell-panel [OPTIONS]
 
 ```powershell
 New-Item -ItemType Directory -Force "$HOME\.config" | Out-Null
-shell-panel --print-default-config | Set-Content "$HOME\.config\shell-panel.toml"
+# Decode shell-panel's output as UTF-8 (the default is the OEM code page, which turns the emoji into "?"),
+# and write the file as UTF-8 without a BOM. Works in PowerShell 7 and Windows PowerShell 5.1.
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+[IO.File]::WriteAllText("$HOME\.config\shell-panel.toml", (shell-panel --print-default-config | Out-String), [Text.UTF8Encoding]::new($false))
 ```
 
 | Key | Meaning | Default |
