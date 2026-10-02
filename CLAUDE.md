@@ -9,7 +9,7 @@ Rust (edition 2021) Windows-only CLI. It runs PowerShell (pwsh 7 or Windows Powe
 | Full gate (fmt, clippy `-D warnings`, all tests) | `pwsh -NoProfile -File .claude/skills/shell-panel-review/scripts/verify.ps1` |
 | One test binary | `cargo test -q --test <name>` |
 | End-to-end / PTY tests | `cargo test -q --test e2e_binary_test -- --test-threads=1` (also `e2e_report_order_test`, `e2e_unicode_input_test`, `shell_report_test`, `e2e_pty_test`, `pty_test`) |
-| Installer end-to-end test | `pwsh -NoProfile -File scripts/test-installer.ps1 -Shell pwsh` and `-Shell powershell` — **always launched from pwsh 7**; it needs `cargo build --release` first |
+| Installer end-to-end test | `pwsh -NoProfile -File scripts/test-installer.ps1 -Shell pwsh` and `-Shell powershell` — **always launched from pwsh 7**; it needs `cargo build --release` first; one run per machine (it holds the mutex `Global\shell-panel-installer-test`) |
 | Mutation proof | `pwsh -NoProfile -File .claude/skills/shell-panel-review/scripts/mutate.ps1 -Path <src> -Anchor '<exact text>' -Replacement '<text>' -TestCommand '<one test>'` |
 | Snapshot / compare the user's machine state | `pwsh -NoProfile -File .claude/skills/shell-panel-review/scripts/user_state.ps1 -Save <file>` then `-Compare <file>` |
 | Workflow lint | `go run github.com/rhysd/actionlint/cmd/actionlint@latest .github/workflows/ci.yml .github/workflows/release.yml` |
@@ -72,7 +72,7 @@ These rules exist because each was broken once in this repository.
   - build every marker you wait for by concatenation (`'QUIET' + 'READY'`), so the echoed command line cannot satisfy the wait;
   - a wait must target text typed after anything stale on screen;
   - use `TempDir` for temporary directories and `drain(quiet, max)` after `wait_exit`;
-  - run e2e tests with `--test-threads=1`, and rerun a failure once before concluding (report both runs). Under parallel load (19 sessions) the 15 s `quiet_session` wait has timed out.
+  - run e2e tests with `--test-threads=1`, and rerun a failure once before concluding (report both runs). Load from parallel ConPTY sessions has overrun two timeouts: in an earlier CI run 19 sessions made the first command miss the 15 s `quiet_session` wait (once in 8 runs), and in the v0.2.0 release run the first completion report after `git ` Tab missed the 3 s report timeout. CI therefore runs the tests with two threads.
 - No raw control bytes in source files: write `\x1b`, `\t`.
 - The shell helper for `.cmd` processes: `kill_on_drop` kills `cmd.exe` but not its grandchildren.
 

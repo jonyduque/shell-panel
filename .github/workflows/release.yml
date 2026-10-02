@@ -29,8 +29,9 @@ jobs:
       - name: Gate
         shell: pwsh
         env:
-          # The end-to-end tests start a PowerShell session each; 19 at once on a 4-CPU runner
-          # pushed the first completion past the 3 s report timeout (v0.1.0 and v0.2.0 runs).
+          # The end-to-end tests start a PowerShell session each. Load from parallel ConPTY
+          # sessions made the first report (3 s, v0.2.0 release run) or the first command
+          # (15 s quiet_session wait, earlier CI) overrun its timeout.
           RUST_TEST_THREADS: 2
         run: ./.claude/skills/shell-panel-review/scripts/verify.ps1
 

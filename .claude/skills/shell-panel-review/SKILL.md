@@ -35,13 +35,16 @@ Caminhos absolutos: agentes em worktree nao veem estes arquivos nao versionados.
 | `scripts/mutate.ps1` | muta 1 trecho de producao, roda 1 teste, restaura byte a byte | 0 MORTA (coberto), 1 SOBREVIVEU, 2 inconclusivo, 3 falha ao restaurar |
 | `scripts/find_consumers.ps1` | consumidores de um simbolo fora do arquivo de origem | 0 ha consumidor, 1 so na origem, 2 so testes |
 | `scripts/check_anchors.ps1` | confere que o trecho citado existe perto da linha | 1 se ha ancora MORTA |
-| `scripts/user_state.ps1` | `-Save`/`-Compare`: PATH do usuario (tipo + hash), linhas de teste no historico do PSReadLine, instalacao real, fragmento do Terminal, config | 0 igual, 1 mudou (pare e relate) |
+| `scripts/user_state.ps1` | `-Save`/`-Compare` (pwsh 7): PATH do usuario (tipo + hash), linhas de teste no historico do PSReadLine, instalacao real, fragmento do Terminal, config | 0 igual, 1 mudou (pare e relate) |
 
 `mutate.ps1` serve tambem para comandos que nao sao cargo: ele reconhece a execucao pela linha
 `test result:` (o `scripts/test-installer.ps1` imprime uma no formato do cargo). Mutacao em arquivo
 `.ps1` funciona igual. `user_state.ps1` foi provado com snapshot adulterado (saida 1) e repetido
 (saida 0); nao rode `-Compare` durante um teste do instalador em andamento (ele poe uma entrada
-temporaria no PATH).
+temporaria no PATH). Ele le o caminho do historico do PSReadLine sob `-NoProfile`: um
+`HistorySavePath` mudado no perfil do usuario nao e conferido (so o caminho padrao).
+So um teste do instalador por vez na maquina: o `scripts/test-installer.ps1` segura o mutex
+`Global\shell-panel-installer-test`; um segundo espera ate 600 s e desiste sem tocar o PATH.
 
 Provas feitas em 2026-10-01 (base 562e3e0): mutacao `contains('-')`->`contains('_')` em
 `src/engine/aggregate.rs:69` MORTA por `test_shell_suggestions_kinds_and_descriptions`;
@@ -101,7 +104,10 @@ devolvia 2 para toda mutacao morta - por isso as provas existem.
   latencia antes de aceitar um numero do codigo.
 - **Testes de ambiente.** O runner do GitHub tem `%TEMP%` em nome curto 8.3 e um console que engole
   sequencias indecodificaveis; comparar o ultimo componente do caminho e nao exigir o que o host
-  pode descartar. Paralelismo de 19 sessoes estourou o primeiro comando de 15 s numa de 8 rodadas.
+  pode descartar. Carga de sessoes ConPTY em paralelo estourou timeouts duas vezes, em medidas
+  diferentes: num CI anterior, 19 sessoes fizeram o primeiro comando passar da espera de 15 s do
+  `quiet_session` numa de 8 rodadas; no run da release v0.2.0, o primeiro relatorio de completion
+  depois de `git ` + Tab passou dos 3 s do timeout do relatorio. Por isso o CI roda com 2 threads.
 - **Revisor tambem erra.** Achados de revisao foram rebaixados ou ampliados por efeito (um Minor que
   apagava o `)` do usuario virou correcao); conferir na fonte antes de despachar a correcao.
 

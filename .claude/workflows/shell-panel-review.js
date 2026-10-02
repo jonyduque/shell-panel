@@ -85,6 +85,8 @@ const SAFETY = `SEGURANCA - a maquina do usuario nao e fixture de teste:
 - NUNCA rode install.ps1 ou uninstall.ps1 com os locais padrao (nem como arquivo, nem via irm | iex).
   So via scripts/test-installer.ps1 (lancado a partir do pwsh 7) ou com -InstallDir e
   -TerminalFragmentDir temporarios.
+- So UM teste do instalador por vez na maquina: o test-installer.ps1 segura o mutex
+  Global\\shell-panel-installer-test; nunca o rode a partir de agentes em paralelo.
 - NUNCA escreva no Path de HKCU\\Environment, no historico do PSReadLine, em fragmentos do Windows
   Terminal, em %LOCALAPPDATA%\\Programs\\shell-panel ou em %USERPROFILE%\\.config\\shell-panel*.
 - Antes e depois de rodar sessoes PowerShell ou o teste do instalador:

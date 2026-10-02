@@ -6,7 +6,7 @@
   ],
   "root": "C:/Users/jonyd/Projetos/shell-panel",
   "skillDir": "C:/Users/jonyd/Projetos/shell-panel/.claude/skills/shell-panel-review",
-  "baseCommit": "562e3e0",
+  "baseCommit": "4f5469c",
   "gate": "pwsh -NoProfile -File C:/Users/jonyd/Projetos/shell-panel/.claude/skills/shell-panel-review/scripts/verify.ps1",
   "mutate": "pwsh -NoProfile -File C:/Users/jonyd/Projetos/shell-panel/.claude/skills/shell-panel-review/scripts/mutate.ps1 -Path <arquivo de producao> -Anchor '<trecho exato>' -Replacement '<mutacao que compila>' -TestCommand 'cargo test -q --test <arquivo> <filtro>'",
   "consumers": "pwsh -NoProfile -File C:/Users/jonyd/Projetos/shell-panel/.claude/skills/shell-panel-review/scripts/find_consumers.ps1 -Symbol <nome> -OriginFile <arquivo>",
