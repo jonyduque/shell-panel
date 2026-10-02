@@ -9,6 +9,7 @@ license = "MIT"
 [dependencies]
 portable-pty = "0.8"
 crossterm = { version = "0.28", features = ["windows", "event-stream"] }
+crossterm_winapi = "0.9"
 futures-util = "0.3"
 tokio = { version = "1.40", features = ["macros", "rt-multi-thread", "sync", "time", "process"] }
 serde = { version = "1.0", features = ["derive"] }

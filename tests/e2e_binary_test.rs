@@ -390,3 +390,170 @@ fn test_console_resize_reaches_the_shell() {
     term.send(b"exit\r");
     assert_eq!(term.wait_exit(STEP), Some(0));
 }
+
+const DA1_ANSWER: &[u8] = b"\x1b[?65;4;6;18;22;52c";
+
+/// Answers every DA1 query (`ESC[c`) the terminal sees, as a real terminal would, until `done`.
+/// `answered` counts the queries answered so far, across calls: a query is answered once.
+fn answer_queries_until(
+    term: &mut Terminal,
+    answered: &mut usize,
+    timeout: Duration,
+    done: impl Fn(&Terminal) -> bool,
+) -> bool {
+    let start = std::time::Instant::now();
+    while start.elapsed() < timeout {
+        let seen = term.raw.windows(3).filter(|w| *w == b"\x1b[c").count();
+        while *answered < seen {
+            term.send(DA1_ANSWER);
+            *answered += 1;
+        }
+        if done(term) {
+            return true;
+        }
+        term.wait_until(Duration::from_millis(100), |_| false);
+    }
+    false
+}
+
+#[test]
+fn test_terminal_answers_at_start_up_are_not_typed() {
+    // The user's report: a slow start and `[?65;4;6;18;22;52c` typed at the first prompt.
+    let dir = temp_dir("da1");
+    let mut term = Terminal::shell_panel(&dir);
+    let started = std::time::Instant::now();
+    let mut answered = 0;
+    assert!(
+        answer_queries_until(&mut term, &mut answered, START, |t| t
+            .screen()
+            .contains("PS ")),
+        "screen: {}",
+        term.screen()
+    );
+    eprintln!("time to first prompt: {:?}", started.elapsed());
+    // Give a late answer time to land on the line.
+    answer_queries_until(&mut term, &mut answered, Duration::from_secs(3), |_| false);
+    let screen = term.screen();
+    assert!(
+        !screen.contains("65;4;6"),
+        "a terminal answer was typed: {screen}"
+    );
+    assert!(
+        !screen.contains("[?6"),
+        "a terminal answer was typed: {screen}"
+    );
+    term.send(b"exit\r");
+    assert_eq!(term.wait_exit(STEP), Some(0));
+}
+
+/// Starts `[Console]::ReadKey` in the session and returns once it is waiting.
+fn read_one_key(term: &mut Terminal) {
+    term.send(
+        b"'READY' + 'KEY'; $k = [Console]::ReadKey($true); 'GOT-' + $k.Key + '-' + $k.Modifiers\r",
+    );
+    assert!(
+        term.wait_for_text("READYKEY", STEP),
+        "screen: {}",
+        term.screen()
+    );
+}
+
+/// The answer line printed by `read_one_key`, not a wrapped echo of the command.
+fn got_line(term: &Terminal) -> Option<String> {
+    term.screen()
+        .lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("GOT-") && !l.contains('\'') && !l.contains('$'))
+        .map(str::to_string)
+}
+
+#[test]
+fn test_program_receives_escape_sequences_intact() {
+    let dir = temp_dir("arrow");
+    let mut term = Terminal::shell_panel(&dir);
+    assert!(
+        term.wait_for_text("PS ", START),
+        "screen: {}",
+        term.screen()
+    );
+    term.quiet_session();
+    read_one_key(&mut term);
+    term.send(b"\x1b[A");
+    assert!(
+        term.wait_until(STEP, |t| got_line(t).is_some()),
+        "screen: {}",
+        term.screen()
+    );
+    assert_eq!(
+        got_line(&term).as_deref(),
+        Some("GOT-UpArrow-None"),
+        "screen: {}",
+        term.screen()
+    );
+    term.send(b"exit\r");
+    assert_eq!(term.wait_exit(STEP), Some(0));
+}
+
+#[test]
+fn test_resize_reaches_a_running_program() {
+    let dir = temp_dir("resizeprog");
+    let mut term = Terminal::shell_panel(&dir);
+    assert!(
+        term.wait_for_text("PS ", START),
+        "screen: {}",
+        term.screen()
+    );
+    term.quiet_session();
+    term.send(b"Start-Sleep -Seconds 3; 'SZ=' + $Host.UI.RawUI.WindowSize.Width + 'x' + $Host.UI.RawUI.WindowSize.Height\r");
+    term.wait_until(Duration::from_millis(800), |_| false); // the program is running
+    term.resize(100, 40);
+    assert!(
+        term.wait_until(Duration::from_secs(15), |t| t
+            .screen()
+            .lines()
+            .any(|l| l.trim() == "SZ=100x40")),
+        "screen: {}",
+        term.screen()
+    );
+    term.send(b"exit\r");
+    assert_eq!(term.wait_exit(STEP), Some(0));
+}
+
+#[test]
+fn test_console_input_mode_is_restored_after_exit() {
+    // shell-panel and a probe share one console: a Windows PowerShell script runs shell-panel, then
+    // prints the input mode. (cmd.exe would not do: it resets the console mode after every command,
+    // which hides a mode shell-panel left behind.) The commands go through a script file because
+    // quoting them on a command line does not survive.
+    let dir = temp_dir("restore");
+    let script = format!(
+        "& \"{}\" --no-profile\r\n\
+$s='[DllImport(\"kernel32.dll\")] public static extern IntPtr GetStdHandle(int n); [DllImport(\"kernel32.dll\")] public static extern bool GetConsoleMode(IntPtr h, out uint m);'\r\n\
+$t=Add-Type -MemberDefinition $s -Name K -Namespace SpProbe -PassThru; $m=[uint32]0\r\n\
+[void]$t::GetConsoleMode($t::GetStdHandle(-10),[ref]$m); 'VTIN=' + ($m -band 0x200)\r\n",
+        env!("CARGO_BIN_EXE_shell-panel")
+    );
+    std::fs::write(dir.join("run.ps1"), script).unwrap();
+    let mut cmd = portable_pty::CommandBuilder::new("powershell.exe");
+    cmd.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]);
+    cmd.arg(dir.join("run.ps1"));
+    cmd.cwd(&*dir);
+    cmd.env_remove("SHELL_PANEL_SESSION");
+    let mut term = Terminal::spawn(cmd);
+    assert!(
+        term.wait_for_text("PS ", START),
+        "screen: {}",
+        term.screen()
+    );
+    term.send(b"exit\r");
+    assert!(
+        term.wait_until(Duration::from_secs(30), |t| t.screen().contains("VTIN=")),
+        "screen: {}",
+        term.screen()
+    );
+    assert!(
+        term.screen().lines().any(|l| l.trim() == "VTIN=0"),
+        "screen: {}",
+        term.screen()
+    );
+}

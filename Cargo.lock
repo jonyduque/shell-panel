@@ -640,6 +640,7 @@ dependencies = [
  "async-trait",
  "clap",
  "crossterm",
+ "crossterm_winapi",
  "futures-util",
  "portable-pty",
  "serde",

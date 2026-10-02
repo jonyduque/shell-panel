@@ -11,6 +11,7 @@ use crate::core::config::Config;
 use crate::engine::aggregate::{plan_replacement, CompletionEngine};
 use crate::engine::provider::Suggestion;
 use crate::engine::providers::json_spec::{default_specs_dir, JsonSpecProvider};
+use crate::io::console_mode::set_vt_input;
 use crate::io::key_event::{classify_key, encode_key_event, withheld_tab_bytes, ActionKey};
 use crate::io::raw_mode::RawModeGuard;
 use crate::pty::conpty::{watch_exit, ConPtySession, SpawnOptions};
@@ -28,6 +29,9 @@ use tracing::debug;
 /// How long Tab waits for the shell's report before it is handed to PowerShell unchanged.
 /// PowerShell's own completion can take seconds when it has to load a module.
 const REPORT_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// How long program mode waits for the rest of a burst of keys before writing what it has.
+const COALESCE_WINDOW: Duration = Duration::from_millis(5);
 
 /// Result of a background completion, tagged with the key generation that requested it.
 struct CompletionOutcome {
@@ -89,6 +93,15 @@ fn write_to_pty<W: Write>(writer: &mut W, bytes: &[u8]) {
     }
 }
 
+/// What program mode hands the PTY for one key event: the host's own text for a character, the
+/// usual encoding for anything else.
+fn program_mode_bytes(key_event: &KeyEvent) -> Vec<u8> {
+    match key_event.code {
+        KeyCode::Char(c) => c.to_string().into_bytes(),
+        _ => encode_key_event(key_event),
+    }
+}
+
 pub struct App {
     pub config: Config,
     pub theme: Theme,
@@ -129,6 +142,13 @@ impl App {
         }
 
         let _raw_guard = RawModeGuard::enter()?;
+        // Program mode until the shell says PSReadLine is reading a line: the host's input then
+        // reaches the PTY unchanged, which is also how the answer to ConPTY's start-up DA1 query
+        // gets to ConPTY.
+        let mut program_mode = true;
+        if let Err(err) = set_vt_input(true) {
+            debug!(%err, "could not enable virtual terminal input");
+        }
 
         let mut pty_reader = pair.master.try_clone_reader()?;
         let mut pty_writer = pair.master.take_writer()?;
@@ -208,6 +228,15 @@ impl App {
                         let _ = stdout.flush();
                     }
 
+                    // Prompt mode while PSReadLine reads a line, program mode otherwise.
+                    let want = !command_state.reading_line;
+                    if want != program_mode {
+                        program_mode = want;
+                        if let Err(err) = set_vt_input(program_mode) {
+                            debug!(%err, program_mode, "could not switch the console input mode");
+                        }
+                    }
+
                     if let Some(report) = command_state.report.take() {
                         // `CommandState` keeps a report only when it answers the Tab that waits now.
                         // Two sources say "a Tab waits": `CommandState::awaiting_report` and
@@ -273,17 +302,48 @@ impl App {
                             // This key invalidates the outstanding report, so hand the shell the
                             // Tab it never got before the key that follows it.
                             write_to_pty(&mut pty_writer, withheld_tab_bytes(tab_pending, key_event.code));
-                            self.handle_key(
-                                &key_event,
-                                &mut dropdown,
-                                &term,
-                                &mut command_state,
-                                &mut pty_writer,
-                                &mut stdout,
-                                &mut report_deadline,
-                            );
-                            // `handle_key` sets the deadline exactly when it requested a report.
-                            tab_pending = report_deadline.is_some();
+                            if program_mode {
+                                // The host's own input, byte for byte: no classification, no
+                                // report request, no dropdown.
+                                //
+                                // The keys the console has already queued go out in one write:
+                                // ConPTY reads an ESC that ends a write as the Escape key, so
+                                // `ESC [ A` written one byte at a time arrives as Escape, `[`, `A`.
+                                let mut bytes = program_mode_bytes(&key_event);
+                                let mut resize = None;
+                                // (`now_or_never` would replace the stream's waker with a no-op one.)
+                                while let Ok(Some(Ok(next))) = tokio::time::timeout(COALESCE_WINDOW, event_stream.next()).await {
+                                    match next {
+                                        Event::Key(k) if k.kind != KeyEventKind::Release => {
+                                            bytes.extend_from_slice(&program_mode_bytes(&k));
+                                        }
+                                        Event::Resize(c, r) => {
+                                            resize = Some((c, r));
+                                            break;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                write_to_pty(&mut pty_writer, &bytes);
+                                tab_pending = false;
+                                if let Some((new_cols, new_rows)) = resize {
+                                    dropdown.close(&term, &mut stdout);
+                                    let _ = pair.master.resize(PtySize { rows: new_rows, cols: new_cols, pixel_width: 0, pixel_height: 0 });
+                                    term.resize(new_cols, new_rows);
+                                }
+                            } else {
+                                self.handle_key(
+                                    &key_event,
+                                    &mut dropdown,
+                                    &term,
+                                    &mut command_state,
+                                    &mut pty_writer,
+                                    &mut stdout,
+                                    &mut report_deadline,
+                                );
+                                // `handle_key` sets the deadline exactly when it requested a report.
+                                tab_pending = report_deadline.is_some();
+                            }
                         }
                         _ => {}
                     }

@@ -8,7 +8,7 @@ Two symptoms the user reported, with one cause.
 
 1. **Slow start, and `[?65;4;6;18;22;52c` typed at the first prompt.** ConPTY sends `ESC[c` (Primary Device Attributes, DA1) when it starts, and waits for the answer. shell-panel passes the query on to the host terminal, and the host answers. But shell-panel reads its console as key events (crossterm), so the answer reaches it as the keys `[ ? 6 5 ; 4 ; 6 c`, with the ESC dropped. It re-encodes them one by one, and PowerShell receives them as typed text. ConPTY never gets an answer and only continues after its timeout.
    - Measured in a test ConPTY: the prompt appears after about 2.1 s when the query is answered, and about 5.9 s when it is not.
-2. **Programs render or behave wrongly.** While a program runs, everything the host sends as an input sequence is dropped or turned into text: mouse reports, focus reports (`ESC[I`/`ESC[O`; ConPTY turns them on with `?1004h`), bracketed paste, answers to queries, and keys crossterm decodes but shell-panel cannot encode (F13–F24 are dropped).
+2. **Programs render or behave wrongly.** While a program runs, everything the host sends as an input sequence is dropped or turned into text: mouse reports, focus reports (`ESC[I`/`ESC[O`; ConPTY turns them on with `?1004h`), bracketed paste, answers to queries.
    - The reactor only handles key and resize events.
    - The exact rendering defect the user saw is not reproduced yet. This design removes the input-side cause. Verifying against the user's programs is a step in the plan.
 
@@ -20,12 +20,12 @@ From a throwaway probe: a crossterm reader inside a test ConPTY, with input writ
 |---|---|---|
 | `ab` | `a`,`b` press **and release** events | `a`,`b` press events only |
 | `ESC[A` | `Up` | `[`, `A` — the ESC is missing |
-| `ESC[25~` (F13) | nothing | `[`,`2`,`5`,`~` — the ESC is missing |
 | `ESC[?65;4;6c` (DA1 answer) | `[`,`?`,`6`,`5`,`;`,`4`,`;`,`6`,`c` — the bug | `[`,`?`,… — the ESC is missing |
 | `ESC[I` (focus) | `FocusGained` | dropped |
 
 - With VT input on, the console delivers the host's bytes in order, as key records with virtual-key code 0 and the character in `u_char`.
 - crossterm 0.28.1 drops a record whose `u_char` is a C0 control (`ESC`, also `^A`…) when its virtual-key code is 0, because `get_char_for_key` finds no key for it. That is the only loss.
+- ConPTY does not deliver F13–F24 (`ESC[25~` never reaches a program even without shell-panel).
 - Answering DA1 with a minimal or a rich reply makes no difference to colour output (SGR and truecolour pass through either way). The content of the answer does not matter to ConPTY.
 
 ## Design
@@ -44,12 +44,14 @@ The mode follows `reading_line`. After each PTY chunk is ingested, if `reading_l
 3. **Reactor (`src/core/app.rs`):** a `program_mode: bool`, recomputed from `command_state.reading_line` after each ingest. The console mode switches on change, and also once before the loop starts. In program mode, a `Key` event writes the raw bytes of its char and skips everything else in `handle_key`. A key event other than a plain `Char` in program mode should not happen; if it does, it goes through `encode_key_event` as today.
 4. **Restoring the console:** `RawModeGuard::drop` and the panic hook clear `ENABLE_VIRTUAL_TERMINAL_INPUT` before disabling raw mode, so the user's console is left as it was found.
 
+Program mode writes the bytes of key events that arrive together in one write; ConPTY otherwise reads an ESC at the end of a write as the Escape key.
+
 Output is unchanged. The existing stripping of `?9001h` and kitty negotiation stays, and the VT mirror and dropdown are untouched.
 
 ### What this fixes and what stays
 
 - The DA1 answer at start-up reaches ConPTY. The start-up wait and the typed `[?65;…c` go away.
-- While a program runs, mouse, focus, bracketed paste, query answers, F13–F24 and every other host sequence reach the program unchanged.
+- While a program runs, mouse, focus, bracketed paste, query answers and every other host sequence reach the program unchanged.
 - In prompt mode, nothing changes. A Tab inside pasted text still triggers completion, which is already documented in Known limitations.
 - If a host sequence is split across the switch between modes (typed in the instant a program starts or ends), it may be read in the wrong mode. This is inherent to switching. The window is the time between RE/RS and the mode switch.
 
@@ -58,12 +60,11 @@ Output is unchanged. The existing stripping of `?9001h` and kitty negotiation st
 End-to-end, through the real binary in the test ConPTY (`tests/e2e_binary_test.rs`):
 
 1. **DA1 at start-up:** the harness answers every `ESC[c` it sees, like a real terminal. That includes the query shell-panel forwards from its own ConPTY. After the first prompt the screen must not contain `?6` / `;4;6c`. RED today: the forwarded answer is typed. Also measure and report time-to-prompt, without asserting it.
-2. **F13 reaches a running program:** `[Console]::ReadKey($true)`, as in the I11 test. The harness writes `ESC[25~` and expects `GOT-F13-…`. RED today: dropped.
-3. **ESC sequences intact in program mode:** `ESC[A` written during `ReadKey` gives `GOT-UpArrow-…`. This guards patch #2: without it, the ESC is lost and `[`, `A` arrive.
-4. **Prompt mode unchanged:** the existing e2e suite (Tab, dropdown, Enter, withheld Tab, fallback, chord never reaches a program) stays green.
-5. **Console restored:** after exit, the console input mode no longer has the VT bit. Unit test of the mode helper if a console is available; otherwise covered by a manual check written into the plan.
+2. **ESC sequences intact in program mode:** `ESC[A` written during `ReadKey` gives `GOT-UpArrow-…`. This guards patch #2: without it, the ESC is lost and `[`, `A` arrive.
+3. **Prompt mode unchanged:** the existing e2e suite (Tab, dropdown, Enter, withheld Tab, fallback, chord never reaches a program) stays green.
+4. **Console restored:** after exit, the console input mode no longer has the VT bit. Unit test of the mode helper if a console is available; otherwise covered by a manual check written into the plan.
 
-Mutation proofs: remove patch #2 (test 3 fails); force prompt mode always (tests 1 and 2 fail).
+Mutation proofs: remove patch #2 (test 3 fails); force prompt mode always (test 1 fails); write each key at once instead of coalescing (test 2 fails).
 
 ## Out of scope
 

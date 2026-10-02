@@ -278,3 +278,13 @@ fn test_control_chords_for_space_and_brackets() {
         assert_eq!(encode_key_event(&ev), vec![byte], "Ctrl+{c:?}");
     }
 }
+
+#[test]
+fn test_vt_input_flag_is_set_and_cleared_without_touching_other_bits() {
+    use shell_panel::io::console_mode::{with_vt_input, ENABLE_VIRTUAL_TERMINAL_INPUT};
+    assert_eq!(ENABLE_VIRTUAL_TERMINAL_INPUT, 0x0200);
+    assert_eq!(with_vt_input(0x01f0, true), 0x03f0);
+    assert_eq!(with_vt_input(0x03f0, false), 0x01f0);
+    assert_eq!(with_vt_input(0x03f0, true), 0x03f0);
+    assert_eq!(with_vt_input(0x0000, false), 0x0000);
+}

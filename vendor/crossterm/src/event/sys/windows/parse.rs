@@ -274,7 +274,13 @@ fn parse_key_event_record(key_event: &KeyEventRecord) -> Option<WindowsKeyEvent>
                     // character the key normally maps to on the user's keyboard layout.
                     // The keys that intentionally generate control codes (ESC, ENTER, TAB, etc.)
                     // are handled by their virtual key codes above.
-                    get_char_for_key(key_event).map(KeyCode::Char)
+                    //
+                    // shell-panel patch #2: with ENABLE_VIRTUAL_TERMINAL_INPUT the console delivers the host's bytes as key records with virtual-key code 0; a C0 control (ESC, ^A...) among them is text to pass on, not a key to look up.
+                    if key_event.virtual_key_code == 0 {
+                        Some(KeyCode::Char(char::from(utf16 as u8)))
+                    } else {
+                        get_char_for_key(key_event).map(KeyCode::Char)
+                    }
                 }
                 surrogate @ 0xD800..=0xDFFF => {
                     return Some(WindowsKeyEvent::Surrogate(surrogate));
