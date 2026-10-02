@@ -17,6 +17,8 @@
     Testing only: the URI of the latest-release lookup, instead of the GitHub API's.
 .PARAMETER TerminalFragmentDir
     Testing only: where the Windows Terminal profile fragment is written.
+.PARAMETER ForceStyle
+    Testing only: use colours and icons even when the output is redirected (NO_COLOR still wins).
 #>
 [CmdletBinding()]
 param(
@@ -25,7 +27,8 @@ param(
     [string]$ZipPath,
     [string]$ChecksumsPath,
     [string]$TerminalFragmentDir,
-    [string]$ApiUri
+    [string]$ApiUri,
+    [switch]$ForceStyle
 )
 # The parameters are bound here and handed to a script block that runs in a child scope: piped
 # through `iex` a script runs in the caller's scope, and the block keeps its variables, functions
@@ -38,7 +41,8 @@ param(
         [string]$ZipPath,
         [string]$ChecksumsPath,
         [string]$ApiUri,
-        [string]$TerminalFragmentDir = (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows Terminal\Fragments\shell-panel')
+        [string]$TerminalFragmentDir = (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows Terminal\Fragments\shell-panel'),
+        [switch]$ForceStyle
     )
     Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
@@ -50,6 +54,31 @@ param(
     $InstallDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($InstallDir)
     # The progress bar makes Invoke-WebRequest many times slower on Windows PowerShell 5.1.
     $ProgressPreference = 'SilentlyContinue'
+
+    # Styled output (colours, icons, bold, italic) only on a console that understands escape
+    # sequences; anywhere else the plain [*] / [OK] / [!] / [i] markers, so logs and CI stay as
+    # they were. NO_COLOR always wins. The file stays ASCII: ESC and the icons are built here.
+    $styled = $false
+    if (-not $env:NO_COLOR) {
+        if ($ForceStyle) { $styled = $true }
+        else { $styled = try { [bool]$Host.UI.SupportsVirtualTerminal -and -not [Console]::IsOutputRedirected } catch { $false } }
+    }
+    $e = [char]0x1b
+    $icons = @{
+        step = [char]::ConvertFromUtf32(0x23F3)
+        done = [char]::ConvertFromUtf32(0x2705)
+        note = [char]::ConvertFromUtf32(0x26A0) + [char]0xFE0F
+        fail = [char]::ConvertFromUtf32(0x274C)
+    }
+    function Format-Path([string]$text) { if ($styled) { "$e[3m$text$e[23m" } else { $text } }
+    function Format-Cmd([string]$text) { if ($styled) { "$e[1;36m$text$e[22;39m" } else { $text } }
+    function Write-Styled([string]$icon, [string]$sgr, [string]$text) { Write-Host "$e[${sgr}m$icon $text$e[0m" }
+    function Write-Step([string]$text) { if ($styled) { Write-Styled $icons.step '36' $text } else { Write-Host "[*] $text" } }
+    function Write-Done([string]$text) { if ($styled) { Write-Styled $icons.done '32' $text } else { Write-Host "[OK] $text" } }
+    function Write-Note([string]$text) { if ($styled) { Write-Styled $icons.note '33' $text } else { Write-Host "[i] $text" } }
+    function Write-Fail([string]$text) { if ($styled) { Write-Styled $icons.fail '1;31' $text } else { Write-Host "[!] $text" } }
+    function Write-Header([string]$title) { if ($styled) { Write-Host "$e[1m$title$e[0m" } }
+    function Write-Detail([string]$text) { if ($styled) { Write-Host "$e[2m$e[3m$text$e[0m" } }
 
     $repo = 'jonyduque/shell-panel'
     if (-not $ApiUri) { $ApiUri = "https://api.github.com/repos/$repo/releases/latest" }
@@ -130,12 +159,15 @@ param(
         [IO.File]::WriteAllText((Join-Path $TerminalFragmentDir 'shell-panel.json'), $json, (New-Object System.Text.UTF8Encoding $false))
     }
 
-    $arch = Get-Arch
     $savedProtocol = $null
     $work = Join-Path ([IO.Path]::GetTempPath()) ('shell-panel-install-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $work | Out-Null
     try {
+        $arch = Get-Arch
+        Write-Header 'shell-panel installer'
         if ($ZipPath) {
+            Write-Detail "local zip, $arch"
+
             if (-not $ChecksumsPath) { throw '-ChecksumsPath is required with -ZipPath.' }
             $zip = (Resolve-Path -LiteralPath $ZipPath).Path
             $sums = (Resolve-Path -LiteralPath $ChecksumsPath).Path
@@ -144,15 +176,17 @@ param(
             $savedProtocol = [Net.ServicePointManager]::SecurityProtocol
             [Net.ServicePointManager]::SecurityProtocol = $savedProtocol -bor [Net.SecurityProtocolType]::Tls12
             if (-not $Version) {
-                Write-Host '[*] Looking up the latest release'
+                Write-Step 'Looking up the latest release'
                 $Version = Get-LatestVersion $ApiUri
             }
             $Version = $Version -replace '^v', ''
+            Write-Detail "$Version, $arch"
+
             $name = "shell-panel-$Version-$arch.zip"
             $base = "https://github.com/$repo/releases/download/v$Version"
             $zip = Join-Path $work $name
             $sums = Join-Path $work 'SHA256SUMS.txt'
-            Write-Host "[*] Downloading $name"
+            Write-Step "Downloading $(Format-Path $name)"
             Invoke-WebRequest -UseBasicParsing -Uri "$base/$name" -OutFile $zip
             Invoke-WebRequest -UseBasicParsing -Uri "$base/SHA256SUMS.txt" -OutFile $sums
         }
@@ -163,7 +197,7 @@ param(
         if ($actual -ine $expected) {
             throw "Checksum mismatch for ${zipName}: expected $expected, got $actual. Nothing was installed."
         }
-        Write-Host '[OK] Checksum verified'
+        Write-Done 'Checksum verified'
 
         $extract = Join-Path $work 'files'
         Expand-Archive -LiteralPath $zip -DestinationPath $extract
@@ -200,19 +234,29 @@ param(
             if (Test-Path -LiteralPath $docSource) { Copy-Item -LiteralPath $docSource -Destination $InstallDir -Force }
         }
         Set-Content -LiteralPath $marker -Value 'Written by the shell-panel installer. uninstall.ps1 removes only shell-panel.exe, LICENSE, README.md and this file from this folder.'
-        Write-Host "[OK] Installed $exe"
+        Write-Done "Installed $(Format-Path $exe)"
 
         Add-UserPath $InstallDir
-        Write-Host "[OK] $InstallDir is on your user PATH"
+        Write-Done "$(Format-Path $InstallDir) is on your user PATH"
 
         Write-TerminalFragment $exe
-        Write-Host '[OK] Windows Terminal profile "PowerShell (shell-panel)" written'
+        Write-Done "Windows Terminal profile $(Format-Cmd '"PowerShell (shell-panel)"') written"
 
         $installed = & $exe --version
         if ($LASTEXITCODE -ne 0) { throw "$exe --version failed (exit $LASTEXITCODE); the installed binary does not run." }
-        Write-Host "[OK] $installed"
+        Write-Done "$installed"
         Write-Host ''
-        Write-Host '[i] Open the "PowerShell (shell-panel)" profile in Windows Terminal, or run shell-panel in a new terminal window.'
+        if ($styled) {
+            Write-Host "$e[1mNext steps$e[0m"
+            Write-Host "  - Open the $(Format-Cmd '"PowerShell (shell-panel)"') profile in Windows Terminal"
+            Write-Host "  - Or run $(Format-Cmd 'shell-panel') in a new terminal window"
+        } else {
+            Write-Note 'Open the "PowerShell (shell-panel)" profile in Windows Terminal, or run shell-panel in a new terminal window.'
+        }
+    } catch {
+        # Styled mode only: plain mode leaves the error to PowerShell's own report.
+        if ($styled) { Write-Fail $_.Exception.Message }
+        throw
     } finally {
         if ($null -ne $savedProtocol) { [Net.ServicePointManager]::SecurityProtocol = $savedProtocol }
         Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue

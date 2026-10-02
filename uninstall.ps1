@@ -13,12 +13,15 @@
     Also delete the configuration file and the custom specs directory.
 .PARAMETER TerminalFragmentDir
     Testing only: where the Windows Terminal profile fragment was written.
+.PARAMETER ForceStyle
+    Testing only: use colours and icons even when the output is redirected (NO_COLOR still wins).
 #>
 [CmdletBinding()]
 param(
     [string]$InstallDir,
     [switch]$Purge,
-    [string]$TerminalFragmentDir
+    [string]$TerminalFragmentDir,
+    [switch]$ForceStyle
 )
 # Same structure as install.ps1: parameters bound here, body in a child-scope script block so that
 # `iex` leaves nothing behind, and @PSBoundParameters so that -Purge:$false stays false.
@@ -26,7 +29,8 @@ param(
     param(
         [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'Programs\shell-panel'),
         [switch]$Purge,
-        [string]$TerminalFragmentDir = (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows Terminal\Fragments\shell-panel')
+        [string]$TerminalFragmentDir = (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows Terminal\Fragments\shell-panel'),
+        [switch]$ForceStyle
     )
     Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
@@ -35,6 +39,31 @@ param(
         throw "The shell-panel uninstaller needs FullLanguage mode (this session is $($ExecutionContext.SessionState.LanguageMode)). Nothing was removed."
     }
     $InstallDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($InstallDir)
+
+    # Styled output (colours, icons, bold, italic) only on a console that understands escape
+    # sequences; anywhere else the plain [*] / [OK] / [!] / [i] markers, so logs and CI stay as
+    # they were. NO_COLOR always wins. The file stays ASCII: ESC and the icons are built here.
+    $styled = $false
+    if (-not $env:NO_COLOR) {
+        if ($ForceStyle) { $styled = $true }
+        else { $styled = try { [bool]$Host.UI.SupportsVirtualTerminal -and -not [Console]::IsOutputRedirected } catch { $false } }
+    }
+    $e = [char]0x1b
+    $icons = @{
+        step = [char]::ConvertFromUtf32(0x23F3)
+        done = [char]::ConvertFromUtf32(0x2705)
+        note = [char]::ConvertFromUtf32(0x26A0) + [char]0xFE0F
+        fail = [char]::ConvertFromUtf32(0x274C)
+    }
+    function Format-Path([string]$text) { if ($styled) { "$e[3m$text$e[23m" } else { $text } }
+    function Format-Cmd([string]$text) { if ($styled) { "$e[1;36m$text$e[22;39m" } else { $text } }
+    function Write-Styled([string]$icon, [string]$sgr, [string]$text) { Write-Host "$e[${sgr}m$icon $text$e[0m" }
+    function Write-Step([string]$text) { if ($styled) { Write-Styled $icons.step '36' $text } else { Write-Host "[*] $text" } }
+    function Write-Done([string]$text) { if ($styled) { Write-Styled $icons.done '32' $text } else { Write-Host "[OK] $text" } }
+    function Write-Note([string]$text) { if ($styled) { Write-Styled $icons.note '33' $text } else { Write-Host "[i] $text" } }
+    function Write-Fail([string]$text) { if ($styled) { Write-Styled $icons.fail '1;31' $text } else { Write-Host "[!] $text" } }
+    function Write-Header([string]$title) { if ($styled) { Write-Host "$e[1m$title$e[0m" } }
+    function Write-Detail([string]$text) { if ($styled) { Write-Host "$e[2m$e[3m$text$e[0m" } }
 
     function Send-EnvironmentChange {
         # See install.ps1: broadcast WM_SETTINGCHANGE without rewriting Path as REG_SZ.
@@ -60,52 +89,60 @@ param(
         $env:Path = (@($env:Path -split ';' | Where-Object { $_.TrimEnd('\') -ine $unwanted }) -join ';')
     }
 
-    $marker = Join-Path $InstallDir '.shell-panel-install'
-    $exe = Join-Path $InstallDir 'shell-panel.exe'
-    if (Test-Path -LiteralPath $marker) {
-        try {
-            if (Test-Path -LiteralPath $exe) { Remove-Item -LiteralPath $exe -Force }
-        } catch {
-            throw "Could not remove $exe ($($_.Exception.Message)). Close every shell-panel session and run the uninstaller again."
-        }
-        # Only what the installer wrote; a moved-aside binary may still be locked by a live session.
-        foreach ($name in 'shell-panel.exe.old', 'LICENSE', 'README.md', '.shell-panel-install') {
-            Remove-Item -LiteralPath (Join-Path $InstallDir $name) -Force -ErrorAction SilentlyContinue
-        }
-        if (@(Get-ChildItem -LiteralPath $InstallDir -Force).Count -eq 0) {
-            Remove-Item -LiteralPath $InstallDir -Force
-            Write-Host "[OK] Removed $InstallDir"
-        } else {
-            Write-Host "[OK] Removed shell-panel from $InstallDir (files you added there were kept)"
-        }
-        Remove-UserPath $InstallDir
-        Write-Host '[OK] Removed from the user PATH'
-    } elseif (Test-Path -LiteralPath $exe) {
-        # -InstallDir is user input: a folder of other tools holding a hand-copied shell-panel.exe.
-        throw "$InstallDir was not created by the shell-panel installer (no .shell-panel-install file). Nothing was removed."
-    } else {
-        Write-Host "[i] No shell-panel install in $InstallDir"
-    }
-
-    $fragment = Join-Path $TerminalFragmentDir 'shell-panel.json'
-    if (Test-Path -LiteralPath $fragment) {
-        Remove-Item -LiteralPath $fragment -Force
-        if (@(Get-ChildItem -LiteralPath $TerminalFragmentDir -Force).Count -eq 0) {
-            Remove-Item -LiteralPath $TerminalFragmentDir -Force
-        }
-        Write-Host '[OK] Removed the Windows Terminal profile'
-    }
-
-    $config = Join-Path $env:USERPROFILE '.config\shell-panel.toml'
-    $specs = Join-Path $env:USERPROFILE '.config\shell-panel'
-    if ($Purge) {
-        foreach ($item in $config, $specs) {
-            if (Test-Path -LiteralPath $item) {
-                Remove-Item -LiteralPath $item -Recurse -Force
-                Write-Host "[OK] Removed $item"
+    try {
+        Write-Header 'shell-panel uninstaller'
+        Write-Detail $InstallDir
+        $marker = Join-Path $InstallDir '.shell-panel-install'
+        $exe = Join-Path $InstallDir 'shell-panel.exe'
+        if (Test-Path -LiteralPath $marker) {
+            try {
+                if (Test-Path -LiteralPath $exe) { Remove-Item -LiteralPath $exe -Force }
+            } catch {
+                throw "Could not remove $exe ($($_.Exception.Message)). Close every shell-panel session and run the uninstaller again."
             }
+            # Only what the installer wrote; a moved-aside binary may still be locked by a live session.
+            foreach ($name in 'shell-panel.exe.old', 'LICENSE', 'README.md', '.shell-panel-install') {
+                Remove-Item -LiteralPath (Join-Path $InstallDir $name) -Force -ErrorAction SilentlyContinue
+            }
+            if (@(Get-ChildItem -LiteralPath $InstallDir -Force).Count -eq 0) {
+                Remove-Item -LiteralPath $InstallDir -Force
+                Write-Done "Removed $(Format-Path $InstallDir)"
+            } else {
+                Write-Done "Removed shell-panel from $(Format-Path $InstallDir) (files you added there were kept)"
+            }
+            Remove-UserPath $InstallDir
+            Write-Done 'Removed from the user PATH'
+        } elseif (Test-Path -LiteralPath $exe) {
+            # -InstallDir is user input: a folder of other tools holding a hand-copied shell-panel.exe.
+            throw "$InstallDir was not created by the shell-panel installer (no .shell-panel-install file). Nothing was removed."
+        } else {
+            Write-Note "No shell-panel install in $(Format-Path $InstallDir)"
         }
-    } else {
-        Write-Host "[i] Kept your configuration ($config and $specs); run with -Purge to remove it."
+
+        $fragment = Join-Path $TerminalFragmentDir 'shell-panel.json'
+        if (Test-Path -LiteralPath $fragment) {
+            Remove-Item -LiteralPath $fragment -Force
+            if (@(Get-ChildItem -LiteralPath $TerminalFragmentDir -Force).Count -eq 0) {
+                Remove-Item -LiteralPath $TerminalFragmentDir -Force
+            }
+            Write-Done 'Removed the Windows Terminal profile'
+        }
+
+        $config = Join-Path $env:USERPROFILE '.config\shell-panel.toml'
+        $specs = Join-Path $env:USERPROFILE '.config\shell-panel'
+        if ($Purge) {
+            foreach ($item in $config, $specs) {
+                if (Test-Path -LiteralPath $item) {
+                    Remove-Item -LiteralPath $item -Recurse -Force
+                    Write-Done "Removed $(Format-Path $item)"
+                }
+            }
+        } else {
+            Write-Note "Kept your configuration ($(Format-Path $config) and $(Format-Path $specs)); run with $(Format-Cmd '-Purge') to remove it."
+        }
+    } catch {
+        # Styled mode only: plain mode leaves the error to PowerShell's own report.
+        if ($styled) { Write-Fail $_.Exception.Message }
+        throw
     }
 } @PSBoundParameters
