@@ -75,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
     // Restore the console if we panic while it is in raw mode.
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        let _ = shell_panel::io::console_mode::set_vt_input(false);
+        shell_panel::io::console_mode::restore_original_vt_input();
         let _ = crossterm::terminal::disable_raw_mode();
         let _ = crossterm::execute!(std::io::stdout(), crossterm::cursor::Show);
         default_hook(info);

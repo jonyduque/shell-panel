@@ -446,25 +446,36 @@ fn test_terminal_answers_at_start_up_are_not_typed() {
     assert_eq!(term.wait_exit(STEP), Some(0));
 }
 
-/// Starts `[Console]::ReadKey` in the session and returns once it is waiting.
-fn read_one_key(term: &mut Terminal) {
+/// Starts `[Console]::ReadKey` in the session and returns once it is waiting. `tag` tells
+/// several reads in one session apart ("" for the first).
+fn read_one_key(term: &mut Terminal, tag: &str) {
     term.send(
-        b"'READY' + 'KEY'; $k = [Console]::ReadKey($true); 'GOT-' + $k.Key + '-' + $k.Modifiers\r",
+        format!("'READY' + 'KEY{tag}'; $k = [Console]::ReadKey($true); 'GOT{tag}-' + $k.Key + '-' + $k.Modifiers\r")
+            .as_bytes(),
     );
     assert!(
-        term.wait_for_text("READYKEY", STEP),
+        term.wait_for_text(&format!("READYKEY{tag}"), STEP),
         "screen: {}",
         term.screen()
     );
 }
 
 /// The answer line printed by `read_one_key`, not a wrapped echo of the command.
-fn got_line(term: &Terminal) -> Option<String> {
+fn got_line(term: &Terminal, tag: &str) -> Option<String> {
+    let prefix = format!("GOT{tag}-");
     term.screen()
         .lines()
         .map(str::trim)
-        .find(|l| l.starts_with("GOT-") && !l.contains('\'') && !l.contains('$'))
+        .find(|l| l.starts_with(&prefix) && !l.contains('\'') && !l.contains('$'))
         .map(str::to_string)
+}
+
+/// Sends `bytes` to a program waiting in `read_one_key` and returns the answer line.
+fn key_answer(term: &mut Terminal, tag: &str, bytes: &[u8]) -> Option<String> {
+    read_one_key(term, tag);
+    term.send(bytes);
+    term.wait_until(STEP, |t| got_line(t, tag).is_some());
+    got_line(term, tag)
 }
 
 #[test]
@@ -477,16 +488,65 @@ fn test_program_receives_escape_sequences_intact() {
         term.screen()
     );
     term.quiet_session();
-    read_one_key(&mut term);
-    term.send(b"\x1b[A");
-    assert!(
-        term.wait_until(STEP, |t| got_line(t).is_some()),
+    let answer = key_answer(&mut term, "", b"\x1b[A");
+    assert_eq!(
+        answer.as_deref(),
+        Some("GOT-UpArrow-None"),
         "screen: {}",
         term.screen()
     );
+    term.send(b"exit\r");
+    assert_eq!(term.wait_exit(STEP), Some(0));
+}
+
+#[test]
+fn test_program_receives_an_escape_sequence_split_across_writes() {
+    // The console may hand shell-panel the start of a sequence before the rest: the ESC must wait
+    // for it, or ConPTY reads the ESC alone as the Escape key.
+    let dir = temp_dir("splitesc");
+    let mut term = Terminal::shell_panel(&dir);
+    assert!(
+        term.wait_for_text("PS ", START),
+        "screen: {}",
+        term.screen()
+    );
+    term.quiet_session();
+    read_one_key(&mut term, "");
+    term.send(b"\x1b");
+    std::thread::sleep(Duration::from_millis(3));
+    term.send(b"[A");
+    term.wait_until(STEP, |t| got_line(t, "").is_some());
     assert_eq!(
-        got_line(&term).as_deref(),
+        got_line(&term, "").as_deref(),
         Some("GOT-UpArrow-None"),
+        "screen: {}",
+        term.screen()
+    );
+    term.send(b"exit\r");
+    assert_eq!(term.wait_exit(STEP), Some(0));
+}
+
+#[test]
+fn test_program_receives_tab_and_backspace() {
+    let dir = temp_dir("tabbs");
+    let mut term = Terminal::shell_panel(&dir);
+    assert!(
+        term.wait_for_text("PS ", START),
+        "screen: {}",
+        term.screen()
+    );
+    term.quiet_session();
+    let tab = key_answer(&mut term, "", b"\t");
+    assert_eq!(
+        tab.as_deref(),
+        Some("GOT-Tab-None"),
+        "screen: {}",
+        term.screen()
+    );
+    let backspace = key_answer(&mut term, "2", b"\x7f");
+    assert_eq!(
+        backspace.as_deref(),
+        Some("GOT2-Backspace-None"),
         "screen: {}",
         term.screen()
     );
@@ -519,15 +579,21 @@ fn test_resize_reaches_a_running_program() {
     assert_eq!(term.wait_exit(STEP), Some(0));
 }
 
-#[test]
-fn test_console_input_mode_is_restored_after_exit() {
-    // shell-panel and a probe share one console: a Windows PowerShell script runs shell-panel, then
-    // prints the input mode. (cmd.exe would not do: it resets the console mode after every command,
-    // which hides a mode shell-panel left behind.) The commands go through a script file because
-    // quoting them on a command line does not survive.
-    let dir = temp_dir("restore");
+/// Runs shell-panel from a Windows PowerShell script that shares its console with a probe, `exit`s
+/// the session and returns the probe's `VTIN=` line: the console's VT input bit after shell-panel.
+/// With `vt_input_before` the script sets that bit before starting shell-panel.
+/// (cmd.exe would not do as the host: it resets the console mode after every command, which
+/// hides a mode shell-panel left behind. The commands go through a script file because quoting
+/// them on a command line does not survive.)
+fn vt_input_bit_after_a_session(tag: &str, vt_input_before: bool) -> String {
+    let dir = temp_dir(tag);
+    let set_before = if vt_input_before {
+        "$d=Add-Type -MemberDefinition '[DllImport(\"kernel32.dll\")] public static extern IntPtr GetStdHandle(int n); [DllImport(\"kernel32.dll\")] public static extern bool GetConsoleMode(IntPtr h, out uint m); [DllImport(\"kernel32.dll\")] public static extern bool SetConsoleMode(IntPtr h, uint m);' -Name S -Namespace SpSet -PassThru; $b=[uint32]0; [void]$d::GetConsoleMode($d::GetStdHandle(-10),[ref]$b); [void]$d::SetConsoleMode($d::GetStdHandle(-10),$b -bor 0x200)\r\n"
+    } else {
+        ""
+    };
     let script = format!(
-        "& \"{}\" --no-profile\r\n\
+        "{set_before}& \"{}\" --no-profile\r\n\
 $s='[DllImport(\"kernel32.dll\")] public static extern IntPtr GetStdHandle(int n); [DllImport(\"kernel32.dll\")] public static extern bool GetConsoleMode(IntPtr h, out uint m);'\r\n\
 $t=Add-Type -MemberDefinition $s -Name K -Namespace SpProbe -PassThru; $m=[uint32]0\r\n\
 [void]$t::GetConsoleMode($t::GetStdHandle(-10),[ref]$m); 'VTIN=' + ($m -band 0x200)\r\n",
@@ -551,9 +617,61 @@ $t=Add-Type -MemberDefinition $s -Name K -Namespace SpProbe -PassThru; $m=[uint3
         "screen: {}",
         term.screen()
     );
+    term.screen()
+        .lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("VTIN="))
+        .unwrap_or_default()
+        .to_string()
+}
+
+#[test]
+fn test_console_input_mode_is_restored_after_exit() {
+    assert_eq!(vt_input_bit_after_a_session("restore", false), "VTIN=0");
+}
+
+#[test]
+fn test_console_input_mode_is_left_as_found_when_vt_input_was_on() {
+    assert_eq!(vt_input_bit_after_a_session("restoreon", true), "VTIN=512");
+}
+
+#[test]
+fn test_stray_host_sequence_at_the_prompt_does_not_revert_the_line() {
+    // At the prompt the console is in classic mode and decodes keys; a host sequence it cannot
+    // decode (here an unknown CSI) arrives as text, ESC included. PSReadLine reverts the line
+    // on an ESC, so shell-panel must not pass that one on.
+    let dir = temp_dir("stray");
+    let mut term = Terminal::shell_panel(&dir);
     assert!(
-        term.screen().lines().any(|l| l.trim() == "VTIN=0"),
+        term.wait_for_text("PS ", START),
         "screen: {}",
         term.screen()
     );
+    term.quiet_session();
+    term.send(b"echo keepme");
+    assert!(
+        term.wait_for_text("echo keepme", STEP),
+        "screen: {}",
+        term.screen()
+    );
+    term.send(b"\x1b[999;1;1u");
+    assert!(
+        term.wait_for_text("999;1;1u", STEP),
+        "the sequence's text never reached the line: {}",
+        term.screen()
+    );
+    let screen = term.screen();
+    assert!(
+        screen.contains("echo keepme"),
+        "the line was reverted: {screen}"
+    );
+    // A real Esc reverts the line, so that `exit` is not typed after the junk.
+    term.send(b"\x1b");
+    assert!(
+        term.wait_until(STEP, |t| !t.screen().contains("keepme")),
+        "line not reverted: {}",
+        term.screen()
+    );
+    term.send(b"exit\r");
+    assert_eq!(term.wait_exit(STEP), Some(0));
 }

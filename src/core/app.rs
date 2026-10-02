@@ -12,7 +12,10 @@ use crate::engine::aggregate::{plan_replacement, CompletionEngine};
 use crate::engine::provider::Suggestion;
 use crate::engine::providers::json_spec::{default_specs_dir, JsonSpecProvider};
 use crate::io::console_mode::set_vt_input;
-use crate::io::key_event::{classify_key, encode_key_event, withheld_tab_bytes, ActionKey};
+use crate::io::key_event::{
+    classify_key, encode_key_event, ends_in_unfinished_escape, is_stray_escape, program_mode_bytes,
+    withheld_tab_bytes, ActionKey,
+};
 use crate::io::raw_mode::RawModeGuard;
 use crate::pty::conpty::{watch_exit, ConPtySession, SpawnOptions};
 use crate::pty::shell::detect_shell;
@@ -30,8 +33,27 @@ use tracing::debug;
 /// PowerShell's own completion can take seconds when it has to load a module.
 const REPORT_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// How long program mode waits for the rest of a burst of keys before writing what it has.
-const COALESCE_WINDOW: Duration = Duration::from_millis(5);
+/// The longest program mode holds keys back to complete an escape sequence (and the longest it
+/// keeps draining one burst), so PTY output, the exit and resizes are never starved.
+const BURST_DEADLINE: Duration = Duration::from_millis(20);
+
+/// The stream's next item if one is queued right now, `Err` otherwise; never waits. Polled
+/// with the task's own context, so the stream's waker stays the reactor's (`now_or_never` would
+/// replace it with a no-op one and input would stop arriving).
+async fn next_if_ready<S: futures_util::Stream + Unpin>(
+    stream: &mut S,
+) -> Result<Option<S::Item>, ()> {
+    std::future::poll_fn(|cx| {
+        std::task::Poll::Ready(match stream.poll_next_unpin(cx) {
+            std::task::Poll::Ready(item) => Ok(item),
+            std::task::Poll::Pending => Err(()),
+        })
+    })
+    .await
+}
+
+/// The most bytes one program-mode write carries.
+const BURST_MAX_BYTES: usize = 64 * 1024;
 
 /// Result of a background completion, tagged with the key generation that requested it.
 struct CompletionOutcome {
@@ -90,15 +112,6 @@ fn write_to_pty<W: Write>(writer: &mut W, bytes: &[u8]) {
     if !bytes.is_empty() {
         let _ = writer.write_all(bytes);
         let _ = writer.flush();
-    }
-}
-
-/// What program mode hands the PTY for one key event: the host's own text for a character, the
-/// usual encoding for anything else.
-fn program_mode_bytes(key_event: &KeyEvent) -> Vec<u8> {
-    match key_event.code {
-        KeyCode::Char(c) => c.to_string().into_bytes(),
-        _ => encode_key_event(key_event),
     }
 }
 
@@ -295,6 +308,11 @@ impl App {
                             let _ = pair.master.resize(PtySize { rows: new_rows, cols: new_cols, pixel_width: 0, pixel_height: 0 });
                             term.resize(new_cols, new_rows);
                         }
+                        // A bare ESC cannot be a key press in prompt mode (see
+                        // `is_stray_escape`): drop it, PSReadLine would act on an ESC.
+                        Event::Key(key_event) if !program_mode && is_stray_escape(&key_event) => {
+                            debug!(?key_event, "dropped a stray ESC in prompt mode");
+                        }
                         Event::Key(key_event) if key_event.kind != KeyEventKind::Release => {
                             generation += 1;
                             report_deadline = None;
@@ -309,10 +327,20 @@ impl App {
                                 // The keys the console has already queued go out in one write:
                                 // ConPTY reads an ESC that ends a write as the Escape key, so
                                 // `ESC [ A` written one byte at a time arrives as Escape, `[`, `A`.
+                                // Queued keys are drained without waiting (`next_if_ready` polls
+                                // the stream once; a zero timeout would cost a timer tick, about
+                                // 16 ms on Windows); only bytes that end inside an escape
+                                // sequence wait for the rest, and never past `until`.
+                                let until = Instant::now() + BURST_DEADLINE;
                                 let mut bytes = program_mode_bytes(&key_event);
                                 let mut resize = None;
-                                // (`now_or_never` would replace the stream's waker with a no-op one.)
-                                while let Ok(Some(Ok(next))) = tokio::time::timeout(COALESCE_WINDOW, event_stream.next()).await {
+                                while bytes.len() < BURST_MAX_BYTES && Instant::now() < until {
+                                    let next = if ends_in_unfinished_escape(&bytes) {
+                                        tokio::time::timeout_at(until, event_stream.next()).await.map_err(|_| ())
+                                    } else {
+                                        next_if_ready(&mut event_stream).await
+                                    };
+                                    let Ok(Some(Ok(next))) = next else { break };
                                     match next {
                                         Event::Key(k) if k.kind != KeyEventKind::Release => {
                                             bytes.extend_from_slice(&program_mode_bytes(&k));

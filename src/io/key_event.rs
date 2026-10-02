@@ -230,3 +230,47 @@ pub fn encode_key_event(event: &KeyEvent) -> Vec<u8> {
         _ => Vec::new(),
     }
 }
+
+/// What program mode hands the PTY for one key event: the host's own text for a character, the
+/// usual encoding for anything else. A classic-mode event read just after the console switched
+/// to virtual terminal input (Ctrl+C typed right after Enter) still carries its modifiers, so a
+/// printable character with Ctrl or Alt is encoded like a key press.
+pub fn program_mode_bytes(event: &KeyEvent) -> Vec<u8> {
+    match event.code {
+        KeyCode::Char(c)
+            if !c.is_control()
+                && event
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+        {
+            encode_key_event(event)
+        }
+        KeyCode::Char(c) => c.to_string().into_bytes(),
+        _ => encode_key_event(event),
+    }
+}
+
+/// An ESC with no modifiers, as a `Char`. A real Esc arrives as `KeyCode::Esc` and a real Ctrl+[
+/// as `Char('[')` with Control, so this can only be the first byte of a host sequence that the
+/// vendored crossterm patch turned into a key (virtual-key code 0). In prompt mode it must not
+/// reach PSReadLine: an ESC there reverts the line. Other bare control characters are not
+/// stray: Enter, Tab and Backspace typed just as the console switches back to classic mode are
+/// still queued as virtual terminal input (`\r`, `\t`, DEL) and must get through.
+pub fn is_stray_escape(event: &KeyEvent) -> bool {
+    event.code == KeyCode::Char('\x1b') && event.modifiers == KeyModifiers::NONE
+}
+
+/// Whether `bytes` end inside an escape sequence: a lone ESC, an unfinished CSI (`ESC [` and
+/// parameters without a final byte) or SS3 (`ESC O` without its letter). ConPTY reads an ESC
+/// that ends a write as the Escape key, so such a buffer must wait for the rest.
+pub fn ends_in_unfinished_escape(bytes: &[u8]) -> bool {
+    let Some(esc) = bytes.iter().rposition(|&b| b == 0x1b) else {
+        return false;
+    };
+    match &bytes[esc + 1..] {
+        [] => true,
+        [b'[', rest @ ..] => !rest.iter().any(|b| (0x40..=0x7e).contains(b)),
+        [b'O'] => true,
+        _ => false,
+    }
+}

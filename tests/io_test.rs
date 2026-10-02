@@ -288,3 +288,110 @@ fn test_vt_input_flag_is_set_and_cleared_without_touching_other_bits() {
     assert_eq!(with_vt_input(0x03f0, true), 0x03f0);
     assert_eq!(with_vt_input(0x0000, false), 0x0000);
 }
+
+#[test]
+fn test_unfinished_escape_sequences_are_told_from_finished_ones() {
+    use shell_panel::io::key_event::ends_in_unfinished_escape;
+    for unfinished in [
+        &b"\x1b"[..],
+        b"\x1b[",
+        b"\x1b[1;",
+        b"\x1b[?65;4",
+        b"\x1bO",
+        b"abc\x1b",
+        b"\x1b[A\x1b[",
+    ] {
+        assert!(ends_in_unfinished_escape(unfinished), "{unfinished:?}");
+    }
+    for finished in [
+        &b""[..],
+        b"a",
+        b"abc",
+        b"\x1b[A",
+        b"\x1b[25~",
+        b"\x1b[1;5A",
+        b"\x1bOP",
+        b"\x1b[?65;4;6c",
+        b"\x1bx",
+        b"\x1b[Aabc",
+    ] {
+        assert!(!ends_in_unfinished_escape(finished), "{finished:?}");
+    }
+}
+
+#[test]
+fn test_program_mode_bytes_keep_modifiers_and_control_chars() {
+    use shell_panel::io::key_event::program_mode_bytes;
+    let key = |code, mods| make_key_event(code, mods, KeyEventKind::Press);
+    assert_eq!(
+        program_mode_bytes(&key(KeyCode::Char('c'), KeyModifiers::CONTROL)),
+        vec![0x03]
+    );
+    assert_eq!(
+        program_mode_bytes(&key(KeyCode::Char('a'), KeyModifiers::NONE)),
+        b"a".to_vec()
+    );
+    assert_eq!(
+        program_mode_bytes(&key(KeyCode::Char('\x1b'), KeyModifiers::NONE)),
+        vec![0x1b]
+    );
+    assert_eq!(
+        program_mode_bytes(&key(KeyCode::Char('x'), KeyModifiers::ALT)),
+        vec![0x1b, b'x']
+    );
+    assert_eq!(
+        program_mode_bytes(&key(KeyCode::Char('A'), KeyModifiers::SHIFT)),
+        b"A".to_vec()
+    );
+    assert_eq!(
+        program_mode_bytes(&key(KeyCode::Char('\u{e9}'), KeyModifiers::NONE)),
+        "\u{e9}".as_bytes().to_vec()
+    );
+    // Not a control char, and the control char itself keeps its own byte whatever the modifiers.
+    assert_eq!(
+        program_mode_bytes(&key(KeyCode::Char('\x1b'), KeyModifiers::CONTROL)),
+        vec![0x1b]
+    );
+}
+
+#[test]
+fn test_a_bare_esc_is_a_stray_host_sequence_byte() {
+    use shell_panel::io::key_event::is_stray_escape;
+    let key = |code, mods| make_key_event(code, mods, KeyEventKind::Press);
+    assert!(is_stray_escape(&key(
+        KeyCode::Char('\x1b'),
+        KeyModifiers::NONE
+    )));
+    // Real keys: Esc, Ctrl+[, Ctrl+A, plain text.
+    assert!(!is_stray_escape(&key(KeyCode::Esc, KeyModifiers::NONE)));
+    assert!(!is_stray_escape(&key(
+        KeyCode::Char('['),
+        KeyModifiers::CONTROL
+    )));
+    assert!(!is_stray_escape(&key(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL
+    )));
+    assert!(!is_stray_escape(&key(
+        KeyCode::Char('a'),
+        KeyModifiers::NONE
+    )));
+    assert!(!is_stray_escape(&key(KeyCode::Tab, KeyModifiers::NONE)));
+    // Enter, Tab and Backspace still queued as VT input when the console switches back.
+    for c in ['\r', '\t', '\x7f', '\x08'] {
+        assert!(
+            !is_stray_escape(&key(KeyCode::Char(c), KeyModifiers::NONE)),
+            "{c:?}"
+        );
+    }
+}
+
+#[test]
+fn test_recorded_vt_input_bit_decides_what_is_restored() {
+    use shell_panel::io::console_mode::{decode_recorded, encode_recorded};
+    assert_eq!(decode_recorded(encode_recorded(Some(true))), Some(true));
+    assert_eq!(decode_recorded(encode_recorded(Some(false))), Some(false));
+    // Nothing recorded (never entered, or the mode was unreadable): leave the console alone.
+    assert_eq!(decode_recorded(encode_recorded(None)), None);
+    assert_eq!(decode_recorded(0), None);
+}

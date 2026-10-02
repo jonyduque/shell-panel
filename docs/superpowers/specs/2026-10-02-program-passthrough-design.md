@@ -39,12 +39,12 @@ The mode follows `reading_line`. After each PTY chunk is ingested, if `reading_l
 
 ### Components
 
-1. **`vendor/crossterm` patch #2:** in `parse_key_event_record`, a key-down record with virtual-key code 0 and a `u_char` in `0x00..=0x1f` yields `KeyCode::Char(<that control char>)` instead of being dropped. Classic mode never produces such a record for a real key, so prompt mode is unaffected. `SHELL-PANEL-PATCH.md` documents it next to patch #1.
+1. **`vendor/crossterm` patch #2:** in `parse_key_event_record`, a key-down record with virtual-key code 0 and a `u_char` in `0x00..=0x1f` yields `KeyCode::Char(<that control char>)` instead of being dropped. A real key never produces such a record, but classic mode does produce one for a host sequence it cannot decode; prompt mode therefore drops a bare ESC `Char` (`is_stray_escape`), because an ESC would make PSReadLine revert the line. `SHELL-PANEL-PATCH.md` documents it next to patch #1.
 2. **`src/io/console_mode.rs` (new):** `pub fn set_vt_input(enabled: bool) -> std::io::Result<()>`, which reads the stdin console mode and sets or clears `ENABLE_VIRTUAL_TERMINAL_INPUT` (0x0200) through `crossterm_winapi::ConsoleMode` (it is already in `Cargo.lock` as a crossterm dependency; it becomes a direct dependency, with no new crate in the lock file). Outside a console, for example with stdin redirected, it returns the error and the caller logs it. shell-panel then keeps working in prompt-mode style.
 3. **Reactor (`src/core/app.rs`):** a `program_mode: bool`, recomputed from `command_state.reading_line` after each ingest. The console mode switches on change, and also once before the loop starts. In program mode, a `Key` event writes the raw bytes of its char and skips everything else in `handle_key`. A key event other than a plain `Char` in program mode should not happen; if it does, it goes through `encode_key_event` as today.
-4. **Restoring the console:** `RawModeGuard::drop` and the panic hook clear `ENABLE_VIRTUAL_TERMINAL_INPUT` before disabling raw mode, so the user's console is left as it was found.
+4. **Restoring the console:** `RawModeGuard::drop` and the panic hook restore `ENABLE_VIRTUAL_TERMINAL_INPUT` to the value recorded when raw mode was entered, before disabling raw mode, so the user's console is left as it was found.
 
-Program mode writes the bytes of key events that arrive together in one write; ConPTY otherwise reads an ESC at the end of a write as the Escape key.
+Program mode writes the bytes of key events that arrive together in one write; ConPTY otherwise reads an ESC at the end of a write as the Escape key. Queued events are drained without waiting; only a buffer that ends inside an escape sequence waits for the rest, for at most 20 ms, and a write carries at most 64 KiB, so output, exit and resize are never starved.
 
 Output is unchanged. The existing stripping of `?9001h` and kitty negotiation stays, and the VT mirror and dropdown are untouched.
 
