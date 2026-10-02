@@ -146,7 +146,7 @@ cargo test
 
 Most tests are pure. The PTY and end-to-end tests start real PowerShell sessions (with `-NoProfile`) through ConPTY — the end-to-end ones run the actual `shell-panel` binary — and need `pwsh.exe` or `powershell.exe` on PATH.
 
-`scripts/test-installer.ps1` tests `install.ps1` and `uninstall.ps1` end to end against `target\release` (run `cargo build --release` first), in temporary folders; add `-Shell powershell` to run them under Windows PowerShell 5.1. It restores your `PATH` afterwards.
+`scripts/test-installer.ps1` tests `install.ps1` and `uninstall.ps1` end to end against `target\release` (run `cargo build --release` first), in temporary folders; add `-Shell powershell` to run them under Windows PowerShell 5.1. Always start it from PowerShell 7 (`pwsh -NoProfile -File scripts/test-installer.ps1 ...`): it temporarily edits your user `PATH` and restores it afterwards.
 
 ### Releasing
 
@@ -162,6 +162,7 @@ The Release workflow checks that the tag matches `Cargo.toml`, runs the full gat
 - PowerShell's completions are computed on the shell's thread, like native Tab: a slow completer delays the dropdown (after 3 seconds Tab falls back to PowerShell).
 - The report travels through the terminal stream as an OSC sequence. Shell messages longer than 1 MiB, or containing raw control bytes, are treated as ordinary output. Messages without the session's secret are ignored. This is verified on Windows 11; very old Windows 10 console hosts may truncate long sequences.
 - A host input sequence that arrives in the instant a program starts or ends may be read in the wrong mode.
+- ConPTY delivers function keys F1–F12 only; F13–F24 never reach a program, with or without shell-panel.
 - A Tab character inside pasted text triggers completion instead of being inserted.
 - The child shell inherits `SHELL_PANEL_SESSION=1`, so shell-panel refuses to start in a new window opened from inside a session (for example with `Start-Process`) until that variable is removed: `$env:SHELL_PANEL_SESSION = $null`.
 

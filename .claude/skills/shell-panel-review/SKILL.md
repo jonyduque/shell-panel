@@ -35,6 +35,13 @@ Caminhos absolutos: agentes em worktree nao veem estes arquivos nao versionados.
 | `scripts/mutate.ps1` | muta 1 trecho de producao, roda 1 teste, restaura byte a byte | 0 MORTA (coberto), 1 SOBREVIVEU, 2 inconclusivo, 3 falha ao restaurar |
 | `scripts/find_consumers.ps1` | consumidores de um simbolo fora do arquivo de origem | 0 ha consumidor, 1 so na origem, 2 so testes |
 | `scripts/check_anchors.ps1` | confere que o trecho citado existe perto da linha | 1 se ha ancora MORTA |
+| `scripts/user_state.ps1` | `-Save`/`-Compare`: PATH do usuario (tipo + hash), linhas de teste no historico do PSReadLine, instalacao real, fragmento do Terminal, config | 0 igual, 1 mudou (pare e relate) |
+
+`mutate.ps1` serve tambem para comandos que nao sao cargo: ele reconhece a execucao pela linha
+`test result:` (o `scripts/test-installer.ps1` imprime uma no formato do cargo). Mutacao em arquivo
+`.ps1` funciona igual. `user_state.ps1` foi provado com snapshot adulterado (saida 1) e repetido
+(saida 0); nao rode `-Compare` durante um teste do instalador em andamento (ele poe uma entrada
+temporaria no PATH).
 
 Provas feitas em 2026-10-01 (base 562e3e0): mutacao `contains('-')`->`contains('_')` em
 `src/engine/aggregate.rs:69` MORTA por `test_shell_suggestions_kinds_and_descriptions`;
@@ -70,6 +77,33 @@ devolvia 2 para toda mutacao morta - por isso as provas existem.
 - Uma worktree ficou registrada sem mudancas (`.claude/worktrees/...-13`): ao fim, rode
   `git worktree list` e remova as limpas com `git worktree remove` + `git branch -D`.
 - O `meta` do workflow precisa ser literal puro: concatenar strings com `+` e rejeitado.
+
+## Licoes das correcoes (2026-10-01 a 2026-10-02: criticos, importantes, menores, modo transparente)
+
+- **Seguranca de subagentes.** Duas vezes um subagente mexeu na maquina do usuario: rodou o
+  `install.ps1` com os locais padrao (reinstalou a instalacao real) e rodou o teste do instalador
+  sob o Windows PowerShell 5.1, que morreu antes de restaurar e deixou `;%SP_INSTALLER_TEST%\bin`
+  no PATH. Toda instrucao para agente leva as regras de seguranca do `CLAUDE.md` e o
+  `user_state.ps1 -Save/-Compare`. Uma mudanca acusada e relatada, nunca "consertada" pelo agente.
+- **Afirmacao na spec sem medicao vira defeito do plano.** A spec prometia F13-F24 para programas;
+  o proprio ConPTY so entrega F1-F12. Medir antes de prometer (um probe descartavel de 10 minutos
+  teria evitado a tarefa bloqueada).
+- **Correcao que introduz regressao pior que o defeito.** Guardar o ReadLine original num closure
+  criado no escopo global congelou `$PWD`: depois de `cd` a completion rodava no diretorio errado.
+  A conferencia manual do coordenador nao fez um `cd`. Teste de comportamento (cwd apos
+  `Set-Location`) primeiro, sempre.
+- **Mutacao proposta pelo plano pode ser equivalente** (remover `"icons"` de `TOP_LEVEL_KEYS` nao
+  muda nada porque o braco do `match` vem antes). Sobreviveu = teste fraco OU mutacao equivalente;
+  descobrir qual e dizer.
+- **O host do teste pode mascarar o defeito.** Um teste de restauracao do modo do console hospedado
+  em `cmd /c` passava sem a restauracao, porque o cmd reseta o modo a cada comando.
+- **Temporizador do Windows ~15,6 ms.** `timeout(5 ms)` (e ate timeout zero) dura ~16 ms. Medir a
+  latencia antes de aceitar um numero do codigo.
+- **Testes de ambiente.** O runner do GitHub tem `%TEMP%` em nome curto 8.3 e um console que engole
+  sequencias indecodificaveis; comparar o ultimo componente do caminho e nao exigir o que o host
+  pode descartar. Paralelismo de 19 sessoes estourou o primeiro comando de 15 s numa de 8 rodadas.
+- **Revisor tambem erra.** Achados de revisao foram rebaixados ou ampliados por efeito (um Minor que
+  apagava o `)` do usuario virou correcao); conferir na fonte antes de despachar a correcao.
 
 ## Severidade
 
