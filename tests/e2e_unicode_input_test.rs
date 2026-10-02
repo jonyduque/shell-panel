@@ -2,7 +2,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::Terminal;
+use common::{remove_dir_when_released, Terminal};
 
 const START: Duration = Duration::from_secs(40);
 const STEP: Duration = Duration::from_secs(15);
@@ -13,16 +13,6 @@ fn answer_before(term: &Terminal, marker: &str) -> Option<String> {
     let lines: Vec<&str> = screen.lines().map(str::trim_end).collect();
     let at = lines.iter().rposition(|l| *l == marker)?;
     at.checked_sub(1).map(|i| lines[i].to_string())
-}
-
-/// Removes `dir` once the killed shell has let go of it as its working directory.
-fn remove_dir_when_released(dir: &std::path::Path) {
-    for _ in 0..50 {
-        if std::fs::remove_dir_all(dir).is_ok() {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
 }
 
 #[test]

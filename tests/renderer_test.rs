@@ -154,9 +154,8 @@ fn test_render_dropdown_below_cursor_and_ansi_sequences() {
     assert!(rendered.contains("\x1b[?25h"), "must show cursor");
 
     // Verify the active line carries the default theme's selection style
-    let selected_start = Theme::default().selected_start;
     assert!(
-        rendered.contains(&selected_start),
+        rendered.contains("\x1b[46m\x1b[30m"),
         "must contain highlight sequence for active item"
     );
 

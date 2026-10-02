@@ -31,7 +31,7 @@ fn test_format_suggestion_line_selected_highlight() {
         .with_kind(SuggestionKind::Subcommand);
     let formatted = format_suggestion_line(&sug, true, 50);
 
-    assert!(formatted.starts_with(&Theme::default().selected_start));
+    assert!(formatted.starts_with("\x1b[46m\x1b[30m"));
     assert!(formatted.ends_with("\x1b[0m"));
     assert!(formatted.contains("> "));
     assert!(formatted.contains("🔹 "));
@@ -56,9 +56,10 @@ fn test_format_suggestion_line_unselected_description_dim() {
 fn test_theme_default_values() {
     let theme = Theme::default();
     let colors = Config::default().colors;
-    assert_ne!(theme.selected_start, "\x1b[7m");
+    // Documented default: cyan background, black foreground; dim gray description.
+    assert_eq!(theme.selected_start, "\x1b[46m\x1b[30m");
     assert_eq!(theme.selected_end, "\x1b[0m");
-    assert!(!theme.desc_start.is_empty());
+    assert_eq!(theme.desc_start, "\x1b[90m");
     assert_eq!(theme.desc_end, "\x1b[0m");
     assert_eq!(theme.unselected_fg_start, "");
     assert_eq!(theme.selected_prefix, colors.selected_prefix);

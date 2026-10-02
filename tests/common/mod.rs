@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
@@ -9,6 +9,42 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize}
 
 pub const COLS: u16 = 120;
 pub const ROWS: u16 = 30;
+
+/// Removes `dir` once the killed shell has let go of it as its working directory.
+pub fn remove_dir_when_released(dir: &Path) {
+    for _ in 0..50 {
+        if std::fs::remove_dir_all(dir).is_ok() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// A temp directory removed on drop, also when the test panics. Declare it before any session
+/// that holds it as its working directory, so the session is dropped first.
+pub struct TempDir(PathBuf);
+
+impl TempDir {
+    /// Creates `%TEMP%\sp_<tag>_<pid>`: unique per process and tag.
+    pub fn new(tag: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("sp_{tag}_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        Self(dir)
+    }
+}
+
+impl std::ops::Deref for TempDir {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        remove_dir_when_released(&self.0);
+    }
+}
 
 /// A process running in a test-owned ConPTY, with its screen mirrored by `vt100`.
 pub struct Terminal {
@@ -129,10 +165,16 @@ impl Terminal {
         }
         None
     }
-    /// Keeps pumping until no chunk has arrived for `quiet`. `wait_exit` returns as soon as the
-    /// child is gone, but bytes written right before exit may still be in the channel.
-    pub fn drain(&mut self, quiet: Duration) {
-        while let Ok(bytes) = self.rx.recv_timeout(quiet) {
+
+    /// Keeps pumping until no chunk has arrived for `quiet`, or `max` has passed even if output
+    /// keeps coming. `wait_exit` returns as soon as the child is gone, but bytes written right
+    /// before exit may still be in the channel.
+    pub fn drain(&mut self, quiet: Duration, max: Duration) {
+        let start = Instant::now();
+        while start.elapsed() < max {
+            let Ok(bytes) = self.rx.recv_timeout(quiet) else {
+                break;
+            };
             self.parser.process(&bytes);
             self.raw.extend_from_slice(&bytes);
         }

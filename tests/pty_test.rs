@@ -1,3 +1,5 @@
+mod common;
+
 use std::io::Write;
 use std::time::Duration;
 
@@ -37,24 +39,19 @@ fn test_is_supported_shell() {
 
 #[test]
 fn test_detect_shell_prefers_pwsh_on_path() {
-    let with = std::env::temp_dir().join(format!("sp_pwsh_{}", std::process::id()));
-    let without = std::env::temp_dir().join(format!("sp_nopwsh_{}", std::process::id()));
-    std::fs::create_dir_all(&with).unwrap();
-    std::fs::create_dir_all(&without).unwrap();
+    let with = common::TempDir::new("pwsh");
+    let without = common::TempDir::new("nopwsh");
     std::fs::write(with.join("pwsh.exe"), b"").unwrap();
 
-    let path = std::env::join_paths([&without, &with]).unwrap();
+    let path = std::env::join_paths([&*without, &*with]).unwrap();
     assert_eq!(detect_shell_in(None, Some(&path)), ShellType::Pwsh);
-    let path = std::env::join_paths([&without]).unwrap();
+    let path = std::env::join_paths([&*without]).unwrap();
     assert_eq!(detect_shell_in(None, Some(&path)), ShellType::Powershell);
     assert_eq!(detect_shell_in(None, None), ShellType::Powershell);
     assert_eq!(
         detect_shell_in(Some("powershell"), Some(&path)),
         ShellType::Powershell
     );
-
-    let _ = std::fs::remove_dir_all(&with);
-    let _ = std::fs::remove_dir_all(&without);
 }
 
 #[tokio::test]

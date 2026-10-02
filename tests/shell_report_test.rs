@@ -3,7 +3,7 @@ mod common;
 use std::path::Path;
 use std::time::Duration;
 
-use common::{Terminal, COLS, ROWS};
+use common::{remove_dir_when_released, Terminal, COLS, ROWS};
 use portable_pty::CommandBuilder;
 use shell_panel::pty::conpty::{ConPtySession, SpawnOptions};
 use shell_panel::pty::shell::detect_shell;
@@ -12,16 +12,7 @@ use shell_panel::shell::osc::{parse_osc_sequence, OscEvent, REPORT_REQUEST_KEY};
 use shell_panel::shell::report::ShellReport;
 
 const TOKEN: &str = "0123456789abcdef0123456789abcdef";
-
-/// Removes `dir` once the killed shell has let go of it as its working directory.
-fn remove_dir_when_released(dir: &std::path::Path) {
-    for _ in 0..50 {
-        if std::fs::remove_dir_all(dir).is_ok() {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
-}
+const DRAIN_MAX: Duration = Duration::from_secs(5);
 
 #[test]
 fn test_base64_encode_vectors() {
@@ -302,6 +293,15 @@ fn test_session_survives_a_script_that_clears_the_global_variables() {
         "no RE/RS after Enter, screen: {}",
         term.screen()
     );
+    // The prompts right after the clear report the session's directory, not an empty cwd.
+    let leaf = dir.file_name().unwrap().to_str().unwrap().to_string();
+    assert!(
+        last_rs(&term.raw)
+            .flatten()
+            .is_some_and(|c| c.ends_with(&format!("\\{leaf}"))),
+        "the marker lost the location right after the clear: {:?}",
+        last_rs(&term.raw)
+    );
     // The marker still follows the location after the globals are gone.
     std::fs::create_dir(dir.join("sub")).unwrap();
     term.send(b"Set-Location sub\r");
@@ -329,12 +329,12 @@ fn test_loading_the_script_twice_does_not_wrap_the_readline_twice() {
     assert!(term.wait_for_text("LOADED", Duration::from_secs(20)));
     let rs = format!("\x1b]6973;{TOKEN};RS;");
     // The prompt after the load line sends its own RS; let it arrive before counting.
-    term.drain(Duration::from_millis(1500));
+    term.drain(Duration::from_millis(1500), DRAIN_MAX);
     let before = count_of(&term.raw, &rs);
     term.send(b"'ONE' + 'LINE'\r");
     assert!(term.wait_for_text("ONELINE", Duration::from_secs(15)));
     // Let any second marker arrive before counting.
-    term.drain(Duration::from_millis(1500));
+    term.drain(Duration::from_millis(1500), DRAIN_MAX);
     assert_eq!(count_of(&term.raw, &rs) - before, 1, "one RS per prompt");
     drop(term);
     remove_dir_when_released(&dir);

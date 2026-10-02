@@ -2,7 +2,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::Terminal;
+use common::{remove_dir_when_released, Terminal};
 
 const START: Duration = Duration::from_secs(40);
 const STEP: Duration = Duration::from_secs(15);
@@ -57,16 +57,6 @@ fn session_with_slow_completer(tag: &str, delay_ms: u32) -> (Terminal, std::path
 /// Lets queued keys, completers and reports finish, pumping output meanwhile.
 fn settle(term: &mut Terminal, secs: u64) {
     term.wait_until(Duration::from_secs(secs), |_| false);
-}
-
-/// Removes `dir` once the killed shell has let go of it as its working directory.
-fn remove_dir_when_released(dir: &std::path::Path) {
-    for _ in 0..50 {
-        if std::fs::remove_dir_all(dir).is_ok() {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
 }
 
 #[test]

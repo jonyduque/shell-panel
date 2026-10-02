@@ -35,7 +35,8 @@ if (Get-Command PSConsoleHostReadLine -ErrorAction Ignore) {
             param($sp_original)
             {
                 # shell-panel-readline-wrapper
-                $cwd = if ($pwd.Provider.Name -eq 'FileSystem') { $pwd.ProviderPath } else { '' }
+                $loc = Get-Location
+                $cwd = if ($loc.Provider.Name -eq 'FileSystem') { $loc.ProviderPath } else { '' }
                 __SP-Send "RS;$(__SP-Escape $cwd)"
                 try { $sp_original.Invoke() } finally { __SP-Send 'RE' }
             }.GetNewClosure()

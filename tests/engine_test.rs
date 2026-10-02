@@ -1,3 +1,5 @@
+mod common;
+
 use shell_panel::engine::lexer::lex_command_line;
 use shell_panel::engine::provider::{CompletionProvider, SuggestionKind};
 use shell_panel::engine::providers::carapace::{
@@ -421,8 +423,7 @@ fn test_deletion_counts_are_utf16_code_units() {
 
 #[tokio::test]
 async fn test_load_dir_adds_user_specs_and_reports_bad_files() {
-    let dir = std::env::temp_dir().join(format!("sp_specs_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = common::TempDir::new("specs");
     std::fs::write(
         dir.join("mytool.json"),
         r#"{"name":"mytool","subcommands":[{"name":"deploy","description":"Ship it"}]}"#,
@@ -438,7 +439,6 @@ async fn test_load_dir_adds_user_specs_and_reports_bad_files() {
 
     let mut provider = JsonSpecProvider::with_embedded_specs();
     let warnings = provider.load_dir(&dir);
-    let _ = std::fs::remove_dir_all(&dir);
 
     assert_eq!(warnings.len(), 1, "{:?}", warnings);
     assert!(warnings[0].contains("broken.json"));
@@ -494,10 +494,9 @@ fn test_carapace_flag_value_with_a_space_is_quoted_after_the_equals() {
     assert!(sugs.iter().all(|s| s.kind == SuggestionKind::Option));
 }
 
-/// Writes a `.cmd` helper that sleeps about five seconds.
-fn slow_helper() -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("shell-panel-slow-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+/// Writes a `.cmd` helper that sleeps about five seconds into `dir`, which belongs to one test
+/// (the tests run in parallel and must not share the file).
+fn slow_helper(dir: &common::TempDir) -> std::path::PathBuf {
     let path = dir.join("slow.cmd");
     std::fs::write(&path, "@ping -n 6 127.0.0.1 >nul\r\n").unwrap();
     path
@@ -505,7 +504,8 @@ fn slow_helper() -> std::path::PathBuf {
 
 #[tokio::test]
 async fn test_slow_carapace_helper_times_out_empty_and_fast() {
-    let helper = slow_helper();
+    let dir = common::TempDir::new("slow_carapace");
+    let helper = slow_helper(&dir);
     let provider = CarapaceProvider::with_binary(helper.to_string_lossy());
     let started = std::time::Instant::now();
     let sugs = provider.complete("git sta", "").await;
@@ -515,7 +515,8 @@ async fn test_slow_carapace_helper_times_out_empty_and_fast() {
 
 #[tokio::test]
 async fn test_slow_zoxide_helper_times_out_empty_and_fast() {
-    let helper = slow_helper();
+    let dir = common::TempDir::new("slow_zoxide");
+    let helper = slow_helper(&dir);
     let provider = ZoxideProvider::with_binary(helper.to_string_lossy());
     let started = std::time::Instant::now();
     let sugs = provider.complete("cd x", "").await;

@@ -2,15 +2,13 @@ mod common;
 
 use std::time::Duration;
 
-use common::Terminal;
+use common::{TempDir, Terminal};
 
 const START: Duration = Duration::from_secs(40);
 const STEP: Duration = Duration::from_secs(15);
 
-fn temp_dir(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("sp_e2e_{}_{}", tag, std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+fn temp_dir(tag: &str) -> TempDir {
+    TempDir::new(&format!("e2e_{tag}"))
 }
 
 #[test]
@@ -237,7 +235,7 @@ fn test_cursor_is_visible_after_exit() {
     term.quiet_session();
     term.send(b"exit\r");
     assert_eq!(term.wait_exit(STEP), Some(0));
-    term.drain(Duration::from_millis(500));
+    term.drain(Duration::from_millis(500), Duration::from_secs(5));
     let last_show_or_hide = term
         .raw
         .windows(6)
@@ -322,21 +320,21 @@ fn test_reserved_chord_never_reaches_a_running_program() {
         term.screen()
     );
     term.send(b"\t");
+    // The answer is a screen line that is only the answer: the echoed command line also starts
+    // with `GOT-` when it wraps, but it carries quotes and `$`.
+    fn answer_line(screen: &str) -> Option<String> {
+        screen
+            .lines()
+            .map(str::trim)
+            .find(|l| l.starts_with("GOT-") && !l.contains('\'') && !l.contains('$'))
+            .map(str::to_string)
+    }
     assert!(
-        term.wait_until(STEP, |t| t.screen().contains("GOT-")
-            && t.screen()
-                .lines()
-                .any(|l| l.trim_start().starts_with("GOT-"))),
+        term.wait_until(STEP, |t| answer_line(&t.screen()).is_some()),
         "screen: {}",
         term.screen()
     );
-    let got = term
-        .screen()
-        .lines()
-        .map(str::trim)
-        .find(|l| l.starts_with("GOT-"))
-        .unwrap()
-        .to_string();
+    let got = answer_line(&term.screen()).unwrap();
     assert_eq!(got, "GOT-Tab-None", "screen: {}", term.screen());
     term.send(b"exit\r");
     assert_eq!(term.wait_exit(STEP), Some(0));
