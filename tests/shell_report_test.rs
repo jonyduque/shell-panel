@@ -33,8 +33,11 @@ fn test_encoded_command_fits_the_windows_command_line() {
 }
 
 /// A real shell that runs `prelude` before the integration script, the way a profile would.
+/// Runs before anything is typed, so the lines the tests type stay out of the user's real history.
+const QUIET_HISTORY: &str = "Set-PSReadLineOption -HistorySaveStyle SaveNothing";
+
 fn shell_with_prelude(prelude: &str) -> Terminal {
-    let script = format!("{prelude}\n{}", script(TOKEN));
+    let script = format!("{QUIET_HISTORY}\n{prelude}\n{}", script(TOKEN));
     let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
     let mut cmd = CommandBuilder::new(detect_shell(None).executable_name());
     cmd.arg("-NoLogo");
@@ -118,12 +121,14 @@ fn test_session_reports_readline_state_line_cursor_and_completions() {
         "no ReadLine marker"
     );
 
+    // The production script runs here, so the session is quieted by typing.
+    term.quiet_session();
+
     // A variable that exists only in this session proves completion runs inside it.
+    let re = format!("\x1b]6973;{token};RE\x07");
+    let before = count_of(&term.raw, &re);
     term.send(b"$sp_report_zz = 1\r");
-    assert!(term.wait_for_raw(
-        format!("\x1b]6973;{token};RE\x07").as_bytes(),
-        Duration::from_secs(15)
-    ));
+    assert!(term.wait_until(Duration::from_secs(15), |t| count_of(&t.raw, &re) > before));
 
     term.send("echo 'ação' > $sp_report_".as_bytes());
     assert!(term.wait_for_text("$sp_report_", Duration::from_secs(15)));
@@ -153,7 +158,7 @@ fn test_session_reports_readline_state_line_cursor_and_completions() {
 
 /// The integration script in a real shell started in `dir`, with the test token.
 fn shell_in(dir: &Path) -> Terminal {
-    let utf16: Vec<u8> = script(TOKEN)
+    let utf16: Vec<u8> = format!("{QUIET_HISTORY}\n{}", script(TOKEN))
         .encode_utf16()
         .flat_map(u16::to_le_bytes)
         .collect();

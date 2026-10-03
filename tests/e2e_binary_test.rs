@@ -442,6 +442,8 @@ fn test_terminal_answers_at_start_up_are_not_typed() {
         !screen.contains("[?6"),
         "a terminal answer was typed: {screen}"
     );
+    // Only now: the checks above look at the first prompt as the user sees it.
+    term.quiet_session();
     term.send(b"exit\r");
     assert_eq!(term.wait_exit(STEP), Some(0));
 }
