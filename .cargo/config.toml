@@ -1,0 +1,5 @@
+# Every process cargo starts (tests, and the PowerShell sessions they spawn) saves PSReadLine
+# history to target/test-history.txt instead of the user's real history: the integration script
+# honours this variable. tests/history_isolation_test.rs proves it.
+[env]
+SHELL_PANEL_TEST_HISTORY = { value = "target/test-history.txt", relative = true, force = true }

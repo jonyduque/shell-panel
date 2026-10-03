@@ -187,7 +187,8 @@ impl Terminal {
     /// PSReadLine saves the accepted line before `SaveNothing` takes effect, so the command line
     /// sent here would be written once per test. It carries an `apikey` comment: PSReadLine 2.2+
     /// (PowerShell 7) keeps lines matching its sensitive-data pattern in memory only. Windows
-    /// PowerShell 5.1 (PSReadLine 2.0) has no such rule, so there this first line is still saved.
+    /// PowerShell 5.1 (PSReadLine 2.0) has no such rule, so there this first line is still saved,
+    /// to `target/test-history.txt` under cargo (see `tests/history_isolation_test.rs`).
     pub fn quiet_session(&mut self) {
         // PredictionSource does not exist in PSReadLine 2.0 (Windows PowerShell 5.1): try/catch.
         // The marker is built by concatenation so the echoed command cannot satisfy the wait.

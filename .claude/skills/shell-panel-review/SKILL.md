@@ -75,6 +75,10 @@ devolvia 2 para toda mutacao morta - por isso as provas existem.
 - **Testes e2e e rascunhos gravam no historico PSReadLine REAL do usuario**
   (`ConsoleHost_history.txt`: ~110 linhas de teste encontradas). `-NoProfile` nao impede isso.
   Rascunho interativo deve enviar primeiro `Set-PSReadLineOption -HistorySaveStyle SaveNothing`.
+  Desde 2026-10-03 toda sessao iniciada pelo cargo grava em `target/test-history.txt`
+  (`SHELL_PANEL_TEST_HISTORY` em `.cargo/config.toml`, honrado pelo script de integracao). Antes
+  disso cada gate completo gravava 10 linhas no historico real; o `user_state.ps1` so via 1 delas,
+  porque conta apenas linhas com marcadores. Rascunho fora do cargo continua gravando no real.
 - **Zero derrubados em 26** nao prova refutador fraco: aqui toda evidencia tinha saida de
   execucao e o refutador reproduziu na propria worktree. Mesmo assim confira os Criticos.
 - Uma worktree ficou registrada sem mudancas (`.claude/worktrees/...-13`): ao fim, rode
