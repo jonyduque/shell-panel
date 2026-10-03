@@ -56,6 +56,7 @@ These rules exist because each was broken once in this repository.
 
 - ConPTY asks the host DA1 (`ESC[c`) at start-up and waits for the answer: the prompt appears in about 2 s when it is answered, about 4–6 s when it is not.
 - ConPTY delivers F1–F12 only; `ESC[25~` (F13) never reaches a program, even without shell-panel.
+- Setting `APPDATA` does not move PSReadLine's history: PowerShell finds the folder through the Windows known-folder API. A probe that relied on it wrote two lines into the user's history. Only `Set-PSReadLineOption -HistorySavePath` inside the session moves it.
 - Windows timers have about 15.6 ms resolution. `tokio::time::timeout(5 ms)` and even a zero-duration timeout take about 16 ms. Poll without waiting when you mean "only what is already queued".
 - `cmd.exe` resets the console mode after each command, so a test hosted by `cmd /c` cannot observe a missing console-mode restore. Host such probes in PowerShell.
 - On the GitHub Windows runner, `%TEMP%` is an 8.3 short path (`RUNNER~1`) while PowerShell reports long paths. The console host there swallows some undecodable sequences that a Windows 11 host passes on as text.
@@ -67,7 +68,8 @@ These rules exist because each was broken once in this repository.
   - The proof runs on the final committed bytes, and the report gives the script's own exit code, not a pipe's.
   - A surviving mutation means either the test is weak or the mutation is equivalent. Find out which and say so.
 - End-to-end tests (`tests/common/mod.rs`, `Terminal`):
-  - call `term.quiet_session()` right after the first prompt; it keeps the session out of the real history and turns off inline predictions;
+  - test sessions save PSReadLine history to `target/test-history.txt`: `.cargo/config.toml` sets `SHELL_PANEL_TEST_HISTORY` for every process cargo starts and the integration script honours it (`tests/history_isolation_test.rs`). A PowerShell started outside cargo, or without the integration script, still writes the real history;
+  - call `term.quiet_session()` right after the first prompt; it also keeps the session out of history and turns off inline predictions;
   - call `warm_completion()` before a timed Tab;
   - build every marker you wait for by concatenation (`'QUIET' + 'READY'`), so the echoed command line cannot satisfy the wait;
   - a wait must target text typed after anything stale on screen;

@@ -53,6 +53,12 @@ try {
     }
 } catch {}
 
+# Tests only: cargo sets SHELL_PANEL_TEST_HISTORY (.cargo/config.toml) for every process it starts,
+# so no session started by a test can write the user's real history. Unset in normal use.
+if ($env:SHELL_PANEL_TEST_HISTORY) {
+    try { Set-PSReadLineOption -HistorySavePath $env:SHELL_PANEL_TEST_HISTORY } catch {}
+}
+
 # Ctrl+Alt+Shift+F12 (sent by shell-panel when Tab is pressed): report line, cursor and completions.
 try {
     Set-PSReadLineKeyHandler -Chord 'Ctrl+Alt+Shift+F12' -BriefDescription 'ShellPanelReport' -ScriptBlock {

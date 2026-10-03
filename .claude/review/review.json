@@ -51,6 +51,8 @@
         "tests/osc_test.rs",
         "tests/stream_test.rs",
         "tests/shell_report_test.rs",
+        "tests/history_isolation_test.rs",
+        ".cargo/config.toml",
         "tests/pty_test.rs",
         "tests/e2e_pty_test.rs"
       ]

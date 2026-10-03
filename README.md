@@ -144,7 +144,7 @@ Put Fig-style JSON files in `%USERPROFILE%\.config\shell-panel\specs\`. A spec w
 cargo test
 ```
 
-Most tests are pure. The PTY and end-to-end tests start real PowerShell sessions (with `-NoProfile`) through ConPTY — the end-to-end ones run the actual `shell-panel` binary — and need `pwsh.exe` or `powershell.exe` on PATH.
+Most tests are pure. The PTY and end-to-end tests start real PowerShell sessions (with `-NoProfile`) through ConPTY — the end-to-end ones run the actual `shell-panel` binary — and need `pwsh.exe` or `powershell.exe` on PATH. Under cargo their PSReadLine history goes to `target/test-history.txt`, not to yours (`.cargo/config.toml` sets `SHELL_PANEL_TEST_HISTORY`, which the integration script honours; `cargo run` gets it too).
 
 `scripts/test-installer.ps1` tests `install.ps1` and `uninstall.ps1` end to end against `target\release` (run `cargo build --release` first), in temporary folders; add `-Shell powershell` to run them under Windows PowerShell 5.1. Always start it from PowerShell 7 (`pwsh -NoProfile -File scripts/test-installer.ps1 ...`): it temporarily edits your user `PATH` and restores it afterwards.
 
