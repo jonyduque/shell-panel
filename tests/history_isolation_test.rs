@@ -44,6 +44,8 @@ fn test_sessions_started_by_tests_save_their_history_under_target() {
         term.screen()
     );
     // Quiet first: until the path is proven, nothing typed here may reach a real history file.
+    // On Windows PowerShell 5.1 the quiet line itself is still saved (no sensitive-line rule in
+    // PSReadLine 2.0), so if the redirect broke that one line would reach the real history there.
     term.quiet_session();
     term.send(b"'PATH=' + (Get-PSReadLineOption).HistorySavePath + '=E' + 'ND'\r");
     assert!(
