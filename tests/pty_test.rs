@@ -68,7 +68,8 @@ async fn test_watch_exit_reports_code_although_pty_output_stays_open() {
 
     // Input typed before PSReadLine is up stays in the console input buffer.
     tokio::time::sleep(Duration::from_secs(3)).await;
-    writer.write_all(b"exit 3\r").unwrap();
+    // The comment is PSReadLine's sensitive-line rule (2.2+): the line is not saved to history.
+    writer.write_all(b"exit 3 # apikey\r").unwrap();
     writer.flush().unwrap();
 
     let code = tokio::time::timeout(Duration::from_secs(30), exit_rx)
