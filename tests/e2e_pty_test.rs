@@ -89,9 +89,12 @@ fn test_e2e_pty_powershell_session() {
         }
     });
 
-    // Write command: Write-Output "HELLO_SHELL_PANEL"
+    // Same quieting as Terminal::quiet_session: the line stays out of the user's real history.
+    // The marker is built by concatenation so the echoed command cannot satisfy the wait.
     writer
-        .write_all(b"Write-Output \"HELLO_SHELL_PANEL\"\r\n")
+        .write_all(
+            b"Set-PSReadLineOption -HistorySaveStyle SaveNothing; 'HELLO_' + 'SHELL_PANEL' # apikey: keeps this line out of the saved history (PSReadLine 2.2+ sensitive-line rule)\r\n",
+        )
         .expect("Failed to write command to PTY");
     writer.flush().expect("Failed to flush PTY writer");
 
